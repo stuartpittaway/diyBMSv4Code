@@ -62,6 +62,11 @@ volatile bool wdt_triggered = false;
 uint16_t bypassCountDown = 0;
 uint8_t bypassHasJustFinished = 0;
 
+bool packetValid = false;
+bool packetRecieved = false;
+#define WAIT_PACKET 200  //miliseconds after sleep to wait packetSerial.update();
+uint32_t waitUpdateStart;
+
 void DefaultConfig() {
   myConfig.LoadResistance = 4.40;
 
@@ -100,40 +105,13 @@ ISR(ADC_vect) {
 }
 
 void onPacketReceived(const uint8_t* receivebuffer, size_t len) {
-
   if (len > 0) {
-
-    //A data packet has just arrived, process it and forward the results to the next module
-    if (PP.onPacketReceived(receivebuffer, len)) {
-      //Only light green if packet is good
-      hardware.GreenLedOn();
-    }
-
-    hardware.EnableSerial0TX();
-
-    //Wake up the connected cell module from sleep, send a framingmarker
-    //byte which the receiver will ignore
-    Serial.write(framingmarker);
-    //Let connected module wake up
-    hardware.FlushSerial0();
-    //delay(1);
-
-    //Send the packet (even if it was invalid so controller can count crc errors)
-    myPacketSerial.send(PP.GetBufferPointer(), PP.GetBufferSize());
-
-    //DEBUG: Are there any known issues with Serial Flush causing a CPU to hang?
-    hardware.FlushSerial0();
-
-    //Replace flush with a simple delay - we have 35+ bytes to transmit at 2400 baud + COBS encoding
-    //delay(10);
-
-    //At 2400bits per second, = 300 bytes per second = 1000ms/300bytes/sec= 3ms per byte
-
-    hardware.DisableSerial0TX();
+    packetRecieved = true;
+    //A data packet has just arrived, check it. Save if it is valid to switch on green led.
+    packetValid = PP.onPacketReceived(receivebuffer, len);
   }
-
-  hardware.GreenLedOff();
 }
+
 
 ISR(USART0_START_vect) {
   //Needs to be here!
@@ -214,6 +192,15 @@ void loop() {
   if (wdt_triggered) {
     //Flash blue LED twice after a watchdog wake up
     hardware.double_tap_blue_led();
+    //We got here because the watchdog (after 8 seconds) went off - we didnt receive a packet of data
+    wdt_triggered = false;    
+  } else {
+    //We have wake up because of UART
+    //Loop to process packet until WAIT_PACKET time or packetRecieved. I will recieve ONLY one packet as Wemos sends them at 0.5 seconds rate  
+    waitUpdateStart = millis();
+    while ((millis() - waitUpdateStart < WAIT_PACKET) && !packetRecieved) {
+        myPacketSerial.update();
+    }
   }
 
   //We always take a voltage and temperature reading on every loop cycle to check if we need to go into bypass
@@ -286,23 +273,37 @@ void loop() {
     }
   }
 
-  if (wdt_triggered) {
-    //We got here because the watchdog (after 8 seconds) went off - we didnt receive a packet of data
-    wdt_triggered = false;
-  } else {
-    //Loop here processing any packets then go back to sleep
-
-    //NOTE this loop size is dependant on the size of the packet buffer (34 bytes)
-    //     too small a loop will prevent anything being processed as we go back to Sleep
-    //     before packet is received correctly
-    for (size_t i = 0; i < 15; i++) {
-      //Allow data to be received in buffer
-      delay(10);
-
-      // Call update to receive, decode and process incoming packets.
-      myPacketSerial.update();
+  if (packetRecieved) {
+    if (packetValid) {
+      //Only light green if packet is good
+      hardware.GreenLedOn();  
+      packetValid = false;
     }
+    hardware.EnableSerial0TX();
+
+    //Wake up the connected cell module from sleep, send a framingmarker
+    //byte which the receiver will ignore
+    Serial.write(framingmarker);
+    //Let connected module wake up
+    hardware.FlushSerial0();
+    delay(3); //As we do in wemos code.
+
+    //Send the packet (even if it was invalid so controller can count crc errors)
+    myPacketSerial.send(PP.GetBufferPointer(), PP.GetBufferSize());
+
+    //DEBUG: Are there any known issues with Serial Flush causing a CPU to hang?
+    hardware.FlushSerial0();
+
+    //Replace flush with a simple delay - we have 35+ bytes to transmit at 2400 baud + COBS encoding
+    //delay(10);
+
+    //At 2400bits per second, = 300 bytes per second = 1000ms/300bytes/sec= 3ms per byte
+
+    hardware.DisableSerial0TX();
+    packetRecieved = false;
   }
+
+  hardware.GreenLedOff();
 
   if (bypassHasJustFinished > 0) {
     bypassHasJustFinished--;
