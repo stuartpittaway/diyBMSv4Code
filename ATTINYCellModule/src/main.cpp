@@ -62,7 +62,7 @@ volatile bool wdt_triggered = false;
 uint16_t bypassCountDown = 0;
 uint8_t bypassHasJustFinished = 0;
 
-bool packetValid = false;
+bool packetValidForMe = false;
 bool packetRecieved = false;
 #define WAIT_PACKET 200  //miliseconds after sleep to wait packetSerial.update();
 uint32_t waitUpdateStart;
@@ -108,7 +108,7 @@ void onPacketReceived(const uint8_t* receivebuffer, size_t len) {
   if (len > 0) {
     packetRecieved = true;
     //A data packet has just arrived, check it. Save if it is valid to switch on green led.
-    packetValid = PP.onPacketReceived(receivebuffer, len);
+    packetValidForMe = PP.isValidPacketForMe(receivebuffer, len);
   }
 }
 
@@ -274,11 +274,14 @@ void loop() {
   }
 
   if (packetRecieved) {
-    if (packetValid) {
-      //Only light green if packet is good
-      hardware.GreenLedOn();  
-      packetValid = false;
-    }
+    if (packetValidForMe) {
+      //Before send the packet, we have to process it first.
+      if (PP.preparePacketToSend()) {
+        //Only light green if packet is good
+        hardware.GreenLedOn();          
+      }
+      packetValidForMe = false;
+    }   
     hardware.EnableSerial0TX();
 
     //Wake up the connected cell module from sleep, send a framingmarker
