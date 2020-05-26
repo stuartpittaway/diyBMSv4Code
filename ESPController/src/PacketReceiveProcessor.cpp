@@ -29,7 +29,11 @@ bool PacketReceiveProcessor::ProcessReply(const uint8_t* receivebuffer,
           case COMMAND::SetBankIdentity:
             break;  // Ignore reply
           case COMMAND::ReadVoltageAndStatus:
-            packetTimerMillisecond=millis()-packetLastSentMillisecond;
+            if (packetLastSentSequence==_packetbuffer.sequence) {
+              //Record the number of milliseconds taken for this packet to go through the modules
+              //we use this to later check for unusually large timeouts (indication of fault)
+              packetTimerMillisecond=millis()-packetLastSentMillisecond;
+            }
             ProcessReplyVoltage();
             break;
           case COMMAND::ReadBadPacketCounter:
@@ -43,6 +47,9 @@ bool PacketReceiveProcessor::ProcessReply(const uint8_t* receivebuffer,
           case COMMAND::ReadSettings:
             ProcessReplySettings();
             break;
+          case COMMAND::ReadBalancePowerPWM:
+            ProcessReplyBalancePower();
+            break;            
         }
 
         return true;
@@ -59,7 +66,7 @@ bool PacketReceiveProcessor::ProcessReply(const uint8_t* receivebuffer,
     totalCRCErrors++;
   }
 
-  //Serial1.println("Failed ProcessReply");
+  //SERIAL_DEBUG.println("Failed ProcessReply");
   return false;
 }
 
@@ -90,7 +97,7 @@ void PacketReceiveProcessor::ProcessReplyAddressByte() {
   if (broadcast > 0) {
     if (numberOfModules[ReplyFromBank()] != ReplyLastAddress()) {
 
-      //Serial1.println("Reset bank values");
+      //SERIAL_DEBUG.println("Reset bank values");
 
       numberOfModules[ReplyFromBank()] = ReplyLastAddress();
 
@@ -126,13 +133,27 @@ void PacketReceiveProcessor::ProcessReplyTemperature() {
   }
 }
 
+void PacketReceiveProcessor::ProcessReplyBalancePower() {
+  // Called when a decoded packet has arrived in _packetbuffer for command 1
+  ProcessReplyAddressByte();
+
+  uint8_t b = ReplyFromBank();
+
+  //SERIAL_DEBUG.print("Bank=");  SERIAL_DEBUG.println(b);
+
+  for (uint8_t i = 0; i < maximum_cell_modules; i++) {
+    cmi[b][i].PWMValue = _packetbuffer.moduledata[i];
+  }
+}
+
+
 void PacketReceiveProcessor::ProcessReplyVoltage() {
   // Called when a decoded packet has arrived in _packetbuffer for command 1
   ProcessReplyAddressByte();
 
   uint8_t b = ReplyFromBank();
 
-  //Serial1.print("Bank=");  Serial1.println(b);
+  //SERIAL_DEBUG.print("Bank=");  SERIAL_DEBUG.println(b);
 
   for (uint8_t i = 0; i < maximum_cell_modules; i++) {
     // 3 top bits remaining

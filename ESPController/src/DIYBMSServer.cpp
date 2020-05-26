@@ -1,3 +1,4 @@
+
 /*
   ____  ____  _  _  ____  __  __  ___
  (  _ \(_  _)( \/ )(  _ \(  \/  )/ __)
@@ -16,40 +17,66 @@ Attribution-NonCommercial-ShareAlike 2.0 UK: England & Wales (CC BY-NC-SA 2.0 UK
 https://creativecommons.org/licenses/by-nc-sa/2.0/uk/
 
 * Non-Commercial — You may not use the material for commercial purposes.
-* Attribution — You must give appropriate credit, provide a link to the license,
-and indicate if changes were made.
-  You may do so in any reasonable manner, but not in any way that suggests the
-licensor endorses you or your use.
-* ShareAlike — If you remix, transform, or build upon the material, you must
-distribute your   contributions under the same license as the original.
-* No additional restrictions — You may not apply legal terms or technological measures
-  that legally restrict others from doing anything the license permits.
+* Attribution — You must give appropriate credit, provide a link to the license, and indicate if changes were made.
+  You may do so in any reasonable manner, but not in any way that suggests the licensor endorses you or your use.
+* ShareAlike — If you remix, transform, or build upon the material, you must distribute your   contributions under the same license as the original.
+* No additional restrictions — You may not apply legal terms or technological measures that legally restrict others from doing anything the license permits.
 */
 
 #include "DIYBMSServer.h"
 #include "ArduinoJson.h"
 #include "defines.h"
+
+#if defined(ESP8266)
 #include "ESP8266TrueRandom.h"
 #include <TimeLib.h>
-#include "settings.h"
+#endif
 
-#include "html_1.h"
-#include "css_1.h"
-#include "jquery.h"
-#include "logo.h"
-#include "echarts_js.h"
+#if defined(ESP32)
+#include <SPIFFS.h>
+#include "time.h"
+#endif
+
+#include "settings.h"
 
 AsyncWebServer *DIYBMSServer::_myserver;
 String DIYBMSServer::UUIDString;
 
 #define REBOOT_COUNT_DOWN 2000
 
+String DIYBMSServer::uuidToString(uint8_t* uuidLocation) {
+  String string = "";
+  int i;
+  for (i=0; i<16; i++) {
+    if (i==4) string += "-";
+    if (i==6) string += "-";
+    if (i==8) string += "-";
+    if (i==10) string += "-";
+    int topDigit = uuidLocation[i] >> 4;
+    int bottomDigit = uuidLocation[i] & 0x0f;
+    // High hex digit
+    string += "0123456789abcdef"[topDigit];
+    // Low hex digit
+    string += "0123456789abcdef"[bottomDigit];
+  }
+
+  return string;
+}
+
 void DIYBMSServer::generateUUID() {
-    //Serial1.print("generateUUID=");
+    //SERIAL_DEBUG.print("generateUUID=");
     byte uuidNumber[16]; // UUIDs in binary form are 16 bytes long
+    #if defined(ESP8266)
     ESP8266TrueRandom.uuid(uuidNumber);
-    UUIDString = ESP8266TrueRandom.uuidToString(uuidNumber);
-    //Serial1.println(UUIDString);
+    #endif
+
+    #if defined(ESP32)
+    //ESP32 has inbuilt random number generator
+    //https://techtutorialsx.com/2017/12/22/esp32-arduino-random-number-generation/
+    for (uint8_t x=0;x<16;x--) uuidNumber[x] = random(0xFF);
+    #endif
+
+    UUIDString = uuidToString(uuidNumber);
 }
 
 bool DIYBMSServer::validateXSS(AsyncWebServerRequest* request)
@@ -310,7 +337,7 @@ void DIYBMSServer::saveGlobalSetting(AsyncWebServerRequest *request) {
     AsyncWebParameter *p2 = request->getParam("BypassThresholdmV", true);
     uint16_t BypassThresholdmV=p2->value().toInt();
 
-    prg.sendSaveGlobalSetting(BypassThresholdmV,BypassOverTempShutdown);
+    prg.sendSaveGlobalSetting(mysettings.totalNumberOfBanks, BypassThresholdmV, BypassOverTempShutdown);
 
     //Just returns NULL
     SendSuccess(request);
@@ -452,7 +479,19 @@ void DIYBMSServer::rules(AsyncWebServerRequest *request) {
   DynamicJsonDocument doc(2048);
   JsonObject root = doc.to<JsonObject>();
 
-  root["timenow"]=(hour() * 60) + minute();
+
+#if defined(ESP8266)
+ root["timenow"]=(hour() * 60) + minute();
+#endif
+
+#if defined(ESP32)
+  struct tm timeinfo;
+  if(!getLocalTime(&timeinfo)){
+    root["timenow"]=0;
+  } else {
+    root["timenow"]=(timeinfo.tm_hour * 60) + timeinfo.tm_min;
+  }
+#endif
 
   root["PCF8574"]=PCF8574Enabled;
 
@@ -480,9 +519,7 @@ void DIYBMSServer::rules(AsyncWebServerRequest *request) {
   for (uint8_t r = 0; r < RELAY_RULES; r++) {
     JsonObject rule1 = bankArray.createNestedObject();
     rule1["value"] =mysettings.rulevalue[r];
-
     rule1["triggered"] =rule_outcome[r];
-
     JsonArray data = rule1.createNestedArray("relays");
 
     for (uint8_t relay = 0; relay < RELAY_TOTAL; relay++) {
@@ -505,16 +542,26 @@ void DIYBMSServer::settings(AsyncWebServerRequest *request) {
   DynamicJsonDocument doc(2048);
   JsonObject root = doc.to<JsonObject>();
 
-  JsonObject mqtt = root.createNestedObject("settings");
-  mqtt["totalnumberofbanks"] =mysettings.totalNumberOfBanks;
-  mqtt["combinationparallel"] =mysettings.combinationParallel;
+  JsonObject settings = root.createNestedObject("settings");
+  settings["totalnumberofbanks"] =mysettings.totalNumberOfBanks;
+  settings["combinationparallel"] =mysettings.combinationParallel;
 
-  mqtt["NTPServerName"] =mysettings.ntpServer;
-  mqtt["TimeZone"] =mysettings.timeZone;
-  mqtt["MinutesTimeZone"] =mysettings.minutesTimeZone;
-  mqtt["DST"] =mysettings.daylight;
+  settings["NTPServerName"] =mysettings.ntpServer;
+  settings["TimeZone"] =mysettings.timeZone;
+  settings["MinutesTimeZone"] =mysettings.minutesTimeZone;
+  settings["DST"] =mysettings.daylight;
 
-  mqtt["now"] = now();
+
+#if defined(ESP8266)
+  settings["now"]= now();
+#endif
+
+#if defined(ESP32)
+  time_t now;
+  if (time(&now)) {
+    settings["now"]=now;
+  }
+#endif
 
   serializeJson(doc, *response);
   request->send(response);
@@ -643,8 +690,8 @@ void DIYBMSServer::monitor(AsyncWebServerRequest *request) {
       cell["bypasshot"] = cmi[bank][i].bypassOverTemp;
       cell["int"] = cmi[bank][i].internalTemp;
       cell["ext"] = cmi[bank][i].externalTemp;
-
       cell["badpkt"] = cmi[bank][i].badPacketCount;
+      cell["pwm"] = cmi[bank][i].inBypass? cmi[bank][i].PWMValue:0;
     }
   }
   serializeJson(doc, *response);
@@ -653,11 +700,18 @@ void DIYBMSServer::monitor(AsyncWebServerRequest *request) {
 
 String DIYBMSServer::TemplateProcessor(const String& var)
 {
-  //Serial1.println(var);
-
-
   if(var == "XSS_KEY")
     return DIYBMSServer::UUIDString;
+
+#if defined(ESP8266)
+  if(var == "PLATFORM")
+    return String("ESP8266");
+#endif
+
+#if defined(ESP32)
+  if(var == "PLATFORM")
+    return String("ESP32");
+#endif
 
 
   return String();
@@ -672,38 +726,15 @@ void DIYBMSServer::StartServer(AsyncWebServer *webserver) {
   cookieValue+=String("; path=/; HttpOnly");
   DefaultHeaders::Instance().addHeader("Set-Cookie", cookieValue);
 
-  _myserver->on("/monitor.json", HTTP_GET, DIYBMSServer::monitor);
-
-  _myserver->on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-    AsyncWebServerResponse *response = request->beginResponse_P(200, "text/html", FILE_INDEX_HTML,DIYBMSServer::TemplateProcessor);
-    request->send(response);
+  _myserver->on("/", HTTP_GET, [](AsyncWebServerRequest *request) {    
+    request->redirect("/default.htm");
   });
 
-  _myserver->on("/style.css", HTTP_GET, [](AsyncWebServerRequest *request) {
-    AsyncWebServerResponse *response = request->beginResponse_P(200, "text/css", FILE_STYLE_CSS);
-    request->send(response);
-  });
-
-  // Return GZIP'ed JQUERY code to browser
-  _myserver->on("/jquery.js", HTTP_GET, [](AsyncWebServerRequest *request) {
-    AsyncWebServerResponse *response = request->beginResponse_P(200, "text/javascript", FILE_JQUERY, FILE_JQUERY_SIZE_BYTES);
-    response->addHeader("Content-Encoding", "gzip");
-    request->send(response);
-  });
-
-  _myserver->on("/logo.gif", HTTP_GET, [](AsyncWebServerRequest *request) {
-    AsyncWebServerResponse *response = request->beginResponse_P(200, "image/gif", FILE_LOGO, FILE_LOGO_SIZE_BYTES);
-    request->send(response);
-  });
-
-  _myserver->on(
-      "/echarts.simple.min.js", HTTP_GET, [](AsyncWebServerRequest *request) {
-        AsyncWebServerResponse *response = request->beginResponse_P(200, "text/javascript", FILE_ECHARTS, FILE_ECHARTS_SIZE_BYTES);
-        response->addHeader("Content-Encoding", "gzip");
-        request->send(response);
-      });
+  _myserver->serveStatic("/default.htm", SPIFFS, "/default.htm").setTemplateProcessor(DIYBMSServer::TemplateProcessor);
+  _myserver->serveStatic("/files/", SPIFFS, "/files/").setCacheControl("max-age=600");
 
 //Read endpoints
+  _myserver->on("/monitor.json", HTTP_GET, DIYBMSServer::monitor);
   _myserver->on("/integration.json", HTTP_GET, DIYBMSServer::integration);
   _myserver->on("/modules.json", HTTP_GET, DIYBMSServer::modules);
   _myserver->on("/identifyModule.json", HTTP_GET, DIYBMSServer::identifyModule);

@@ -23,14 +23,17 @@ https://creativecommons.org/licenses/by-nc-sa/2.0/uk/
 * No additional restrictions — You may not apply legal terms or technological measures
   that legally restrict others from doing anything the license permits.
 */
+/*
+IMPORTANT
 
+You need to configure the correct DIYBMSMODULEVERSION in defines.h file to build for your module
 
+*/
 #include <Arduino.h>
 
 #if !(F_CPU == 8000000)
 #error Processor speed should be 8 Mhz internal
 #endif
-
 
 //An Arduino Library that facilitates packet-based serial communication using COBS or SLIP encoding.
 //https://github.com/bakercp/PacketSerial
@@ -41,7 +44,7 @@ https://creativecommons.org/licenses/by-nc-sa/2.0/uk/
 //Consistant byte stuffing mode
 //Use ZERO for packet header/terminator
 //64 byte buffer
-PacketSerial_ <COBS, framingmarker, 64> myPacketSerial;
+PacketSerial_<COBS, framingmarker, 64> myPacketSerial;
 
 //Our project code includes
 #include "defines.h"
@@ -61,6 +64,11 @@ PacketProcessor PP(&hardware, &myConfig);
 volatile bool wdt_triggered = false;
 uint16_t bypassCountDown = 0;
 uint8_t bypassHasJustFinished = 0;
+bool pwmrunning = false;
+
+void DefaultConfig()
+{
+
 
 bool packetValidForMe = false;
 bool packetRecieved = false;
@@ -68,7 +76,20 @@ bool packetRecieved = false;
 uint32_t waitUpdateStart;
 
 void DefaultConfig() {
+
+  // Value of the resistor for load shedding
+
+#if (defined(DIYBMSMODULEVERSION) && DIYBMSMODULEVERSION == 410)
+  myConfig.LoadResistance = 4.00;
+#elif defined(DIYBMSMODULEVERSION) && (DIYBMSMODULEVERSION >= 421)
+  myConfig.LoadResistance = 4.96;
+#else
+  //For v4.00
   myConfig.LoadResistance = 4.40;
+#endif
+
+  //Default bank zero
+  myConfig.mybank = 0;
 
   //About 2.2100 seems about right
   myConfig.Calibration = 2.21000;
@@ -76,16 +97,25 @@ void DefaultConfig() {
   //2mV per ADC resolution
   myConfig.mVPerADC = 2.0; //2048.0/1024.0;
 
+#if defined(DIYBMSMODULEVERSION) && (DIYBMSMODULEVERSION == 420 && !defined(SWAPR19R20))
+  //Keep temperature low for modules with R19 and R20 not swapped
+  myConfig.BypassOverTempShutdown = 45;
+#else
   //Stop running bypass if temperature over 70 degrees C
   myConfig.BypassOverTempShutdown = 70;
+#endif
 
-  myConfig.mybank = 0;
-
-  //Start bypass at 4.1 volt
+  //Start bypass at 4.1V
   myConfig.BypassThresholdmV = 4100;
 
+#if defined(DIYBMSMODULEVERSION) && (DIYBMSMODULEVERSION == 430 || DIYBMSMODULEVERSION == 420 || DIYBMSMODULEVERSION == 421)
+  //Murata Electronics NCP18WB473J03RB = 47K ±5% 4050K ±2% 100mW 0603 NTC Thermistors RoHS
+  myConfig.Internal_BCoefficient = 4050;
+#else
   //4150 = B constant (25-50℃)
   myConfig.Internal_BCoefficient = 4150;
+#endif
+
   //4150 = B constant (25-50℃)
   myConfig.External_BCoefficient = 4150;
 
@@ -93,25 +123,28 @@ void DefaultConfig() {
   //Using https://www.thinksrs.com/downloads/programs/therm%20calc/ntccalibrator/ntccalculator.html
 }
 
-ISR(WDT_vect) {
+ISR(WDT_vect)
+{
   //This is the watchdog timer - something went wrong and no activity recieved in a while
   wdt_triggered = true;
   PP.IncrementWatchdogCounter();
 }
 
-ISR(ADC_vect) {
+ISR(ADC_vect)
+{
   // when ADC completed, take an interrupt and process result
   PP.ADCReading(hardware.ReadADC());
 }
+
 
 void onPacketReceived(const uint8_t* receivebuffer, size_t len) {
   if (len > 0) {
     packetRecieved = true;
     //A data packet has just arrived, check it. Save if it is valid to switch on green led.
     packetValidForMe = PP.isValidPacketForMe(receivebuffer, len);
+
   }
 }
-
 
 ISR(USART0_START_vect) {
   //Needs to be here!
@@ -124,9 +157,11 @@ ISR(USART0_START_vect) {
 
 //6Hz rate - number of times we call this code in Loop
 //Kp, Ki, Kd, Hz, output_bits, output_signed);
-FastPID myPID(30, 10, 5, 6, 16, false);
+//Settings for V4.00 boards with 2R2 resistors = (4.0, 0.5, 0.2, 6, 8, false);
+FastPID myPID(4.0, 0.5, 0.2, 6, 8, false);
 
-void setup() {
+void setup()
+{
   //Must be first line of code
   wdt_disable();
   wdt_reset();
@@ -143,14 +178,29 @@ void setup() {
   hardware.DisableSerial1();
 
   //Check if setup routine needs to be run
-  if (!Settings::ReadConfigFromEEPROM((uint8_t*)&myConfig, sizeof(myConfig), EEPROM_CONFIG_ADDRESS)) {
+  if (!Settings::ReadConfigFromEEPROM((uint8_t *)&myConfig, sizeof(myConfig), EEPROM_CONFIG_ADDRESS))
+  {
     DefaultConfig();
     //Save settings
-    Settings::WriteConfigToEEPROM((uint8_t*)&myConfig, sizeof(myConfig), EEPROM_CONFIG_ADDRESS);
+    Settings::WriteConfigToEEPROM((uint8_t *)&myConfig, sizeof(myConfig), EEPROM_CONFIG_ADDRESS);
   }
 
+#if defined(DIYBMSMODULEVERSION) && (DIYBMSMODULEVERSION == 420 && !defined(SWAPR19R20))
+  //Keep temperature low for modules with R19 and R20 not swapped
+  if (myConfig.BypassOverTempShutdown > 45)
+  {
+    myConfig.BypassOverTempShutdown = 45;
+  }
+#endif
+
   hardware.double_tap_green_led();
+
+#if defined(DIYBMSMODULEVERSION) && DIYBMSMODULEVERSION < 430
   hardware.double_tap_blue_led();
+#endif
+
+  //The PID can vary between 0 and 100
+  myPID.setOutputRange(0, 100);
 
   //Set up data handler
   Serial.begin(COMMS_BAUD_RATE, SERIAL_8N1);
@@ -159,26 +209,28 @@ void setup() {
   myPacketSerial.setPacketHandler(&onPacketReceived);
 }
 
-//bool hztiming=false;
-
-void loop() {
+void loop()
+{
   //This loop runs around 3 times per second when the module is in bypass
 
   wdt_reset();
 
   //if (hztiming) {  hardware.SparePinOn();} else {  hardware.SparePinOff();}hztiming=!hztiming;
 
-  if (PP.identifyModule > 0) {
+  if (PP.identifyModule > 0)
+  {
     hardware.GreenLedOn();
     PP.identifyModule--;
 
-    if (PP.identifyModule == 0) {
+    if (PP.identifyModule == 0)
+    {
       hardware.GreenLedOff();
     }
   }
 
   //#ifndef DIYBMS_DEBUG
-  if (!PP.WeAreInBypass && bypassHasJustFinished == 0) {
+  if (!PP.WeAreInBypass && bypassHasJustFinished == 0)
+  {
     //We don't sleep if we are in bypass mode or just after completing bypass
     hardware.EnableStartFrameDetection();
 
@@ -189,9 +241,15 @@ void loop() {
 
   //We are awake....
 
-  if (wdt_triggered) {
+  if (wdt_triggered)
+  {
+#if defined(DIYBMSMODULEVERSION) && DIYBMSMODULEVERSION < 430
     //Flash blue LED twice after a watchdog wake up
     hardware.double_tap_blue_led();
+#else
+    //Flash green LED twice after a watchdog wake up
+    hardware.double_tap_green_led();
+#endif
     //We got here because the watchdog (after 8 seconds) went off - we didnt receive a packet of data
     wdt_triggered = false;    
   } else {
@@ -219,43 +277,59 @@ void loop() {
 
   hardware.ReferenceVoltageOff();
 
-  #ifdef DIYBMS_DEBUG
-  Serial1.begin(38400, SERIAL_8N1);
-  Serial1.println(PP.InternalTemperature());
-  Serial1.end();
-  #endif
-
-  if (PP.BypassCheck()) {
+  if (PP.BypassCheck())
+  {
     //Our cell voltage is OVER the setpoint limit, start draining cell using load bypass resistor
 
-    if (!PP.WeAreInBypass) {
+    if (!PP.WeAreInBypass)
+    {
       //We have just entered the bypass code
-
-      //The TIMER2 can vary between 0 and 10,000
-      myPID.setOutputRange(0, 10000);
-
-      //Start timer2 with zero value
-      hardware.StartTimer2();
-
       PP.WeAreInBypass = true;
+
       //This controls how many cycles of loop() we make before re-checking the situation
+      //about every 30 seconds
       bypassCountDown = 200;
     }
   }
 
-  if (bypassCountDown > 0) {
+  if (bypassCountDown > 0)
+  {
 
-    //hardware.BlueLedOn();
-    //Compare the real temperature against max setpoint, we want the PID to keep at this temperature
-    uint16_t output = myPID.step(myConfig.BypassOverTempShutdown, PP.InternalTemperature());
-    //hardware.BlueLedOff();
+    uint8_t exttemp = PP.InternalTemperature() & 0xFF;
 
-    hardware.SetTimer2Value(output);
+    if (exttemp < (myConfig.BypassOverTempShutdown - 10))
+    {
+      //Full power if we are nowhere near the setpoint (more than 10 degrees C away)
+      hardware.DumpLoadOn();
+      hardware.StopTimer2();
+      PP.PWMValue = 100;
+      pwmrunning = false;
+    }
+    else
+    {
+      if (!pwmrunning)
+      {
+        //We have approached the set point, enable PWM
+        hardware.DumpLoadOff();
+        //Start timer2 with zero value
+        hardware.StartTimer2();
+        pwmrunning = true;
+        //myPID.clear();
+      }
+
+      //Compare the real temperature against max setpoint, we want the PID to keep at this temperature
+      PP.PWMValue = myPID.step(myConfig.BypassOverTempShutdown, exttemp);
+
+      //Scale PWM up to 0-10000
+      hardware.SetTimer2Value(PP.PWMValue * 100);
+    }
 
     bypassCountDown--;
 
-    if (bypassCountDown == 0) {
+    if (bypassCountDown == 0)
+    {
       //Switch everything off for this cycle
+      pwmrunning = false;
 
       PP.WeAreInBypass = false;
 
@@ -272,6 +346,7 @@ void loop() {
       bypassHasJustFinished = 200;
     }
   }
+
 
   if (packetRecieved) {
     if (packetValidForMe) {
@@ -291,6 +366,7 @@ void loop() {
     hardware.FlushSerial0();
     delay(3); //As we do in wemos code.
 
+
     //Send the packet (even if it was invalid so controller can count crc errors)
     myPacketSerial.send(PP.GetBufferPointer(), PP.GetBufferSize());
 
@@ -306,9 +382,11 @@ void loop() {
     packetRecieved = false;
   }
 
+
   hardware.GreenLedOff();
 
   if (bypassHasJustFinished > 0) {
+
     bypassHasJustFinished--;
   }
 }

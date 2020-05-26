@@ -6,12 +6,7 @@
 #include "diybms_attiny841.h"
 #include "Steinhart.h"
 #include "defines.h"
-
 #include "settings.h"
-
-//Tiny and cross-device compatible CCITT CRC16 calculator library - uCRC16Lib
-//https://github.com/Naguissa/uCRC16Lib
-//#include <uCRC16Lib.h>
 #include "crc16.h"
 
 #define ADC_CELL_VOLTAGE 0
@@ -20,43 +15,59 @@
 
 #define maximum_cell_modules 16
 
-struct PacketStruct {
+struct PacketStruct
+{
   uint8_t address;
   uint8_t command;
   uint16_t sequence;
   uint16_t moduledata[maximum_cell_modules];
   uint16_t crc;
-}  __attribute__((packed));
+} __attribute__((packed));
 
-typedef union
-{
- float number;
- uint8_t bytes[4];
- uint16_t word[2];
+typedef union {
+  float number;
+  uint8_t bytes[4];
+  uint16_t word[2];
 } FLOATUNION_t;
 
-
-class PacketProcessor {
+class PacketProcessor
+{
 public:
-  PacketProcessor(DiyBMSATTiny841* hardware, CellModuleConfig* config) {_hardware=hardware; _config=config;}
+  PacketProcessor(DiyBMSATTiny841 *hardware, CellModuleConfig *config)
+  {
+    _hardware = hardware;
+    _config = config;
+  }
   ~PacketProcessor() {}
   bool onPacketReceived(const uint8_t* receivebuffer, size_t len);
   bool isValidPacketForMe(const uint8_t* receivebuffer, size_t len);
   bool preparePacketToSend();  
   byte* GetBufferPointer();
+
   int GetBufferSize();
 
   void ADCReading(uint16_t value);
   void TakeAnAnalogueReading(uint8_t mode);
   uint16_t CellVoltage();
-  uint16_t IncrementWatchdogCounter() { watchdog_counter++; return watchdog_counter; }
+  uint16_t IncrementWatchdogCounter()
+  {
+    watchdog_counter++;
+    return watchdog_counter;
+  }
   bool BypassCheck();
   uint16_t TemperatureMeasurement();
   byte identifyModule;
   bool BypassOverheatCheck();
+
+  //Raw value returned from ADC (10bit)
   uint16_t RawADCValue();
   int16_t InternalTemperature();
+
+  //Returns TRUE if the module is bypassing current
   bool WeAreInBypass;
+
+  //Value of PWM 0-100
+  uint16_t PWMValue;
 
 private:
   DiyBMSATTiny841 *_hardware;
@@ -69,13 +80,13 @@ private:
   bool isPacketForMe();
   //uint8_t TemperatureToByte(float TempInCelcius);
 
-  volatile uint8_t adcmode=0;
+  volatile uint8_t adcmode = 0;
   volatile uint16_t raw_adc_voltage;
   volatile uint16_t onboard_temperature;
   volatile uint16_t external_temperature;
   volatile uint8_t mymoduleaddress = 0xFF;
   volatile uint16_t badpackets = 0;
-  volatile uint16_t watchdog_counter=0;
+  volatile uint16_t watchdog_counter = 0;
 };
 
 #endif

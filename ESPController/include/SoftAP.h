@@ -5,9 +5,20 @@
 
 
 #include <Arduino.h>
-#include <ESP8266WiFi.h>
-#include <Hash.h>
+#if defined(ESP8266)
+//https://github.com/esp8266/Arduino
+#include <ESP8266WiFi.h>          
 #include <ESPAsyncTCP.h>
+#else
+#include <WiFi.h>
+#include <AsyncTCP.h>
+#endif
+
+#if defined(ESP32)
+#include <SPIFFS.h>
+#endif
+
+
 #include <ESPAsyncWebServer.h>
 
 #include <EEPROM.h>
@@ -35,12 +46,9 @@ class DIYBMSSoftAP {
       static void handleRoot(AsyncWebServerRequest *request);
       static void handleSave(AsyncWebServerRequest *request);
 
-
-      static String htmlHeader();
-      static String htmlFooter();
-
       static wifi_eeprom_settings _config;
       static String networks;
+      static String TemplateProcessor(const String& var);
 };
 
 
