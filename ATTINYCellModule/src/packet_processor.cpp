@@ -172,6 +172,47 @@ bool PacketProcessor::onPacketReceived(const uint8_t* receivebuffer, size_t len)
   return false;
 }
 
+//Return true if packet is valid and for me, so we must to check ADC and process it.
+bool PacketProcessor::isValidPacketForMe(const uint8_t* receivebuffer, size_t len) {
+  // Process your decoded incoming packet here.
+  if (len == sizeof(buffer)) {
+    //Copy to our buffer (probably a better way to share memory than this)
+    memcpy(&buffer, receivebuffer, sizeof(buffer));
+    //Calculate the CRC and compare to received
+    uint16_t validateCRC = CRC16::CalculateArray((unsigned char*)&buffer, sizeof(buffer) - 2);
+    if (validateCRC == buffer.crc) {
+      //It's a good packet
+      if (isPacketForMe()) {
+        return true;  //return true so we need to measure ADC and return process packet.
+      }
+      //Return false the packet was not for me (but still a valid packet)...
+      return false;
+    }
+  }
+  //Clear the packet buffer on an invalid packet so the previous packet
+  //is not re-transmitted issue #22
+  memset(&buffer, 0, sizeof(buffer));
+  //We need to do something here, the packet received was not correct
+  badpackets++;
+  return false;
+}
+
+//Process and send the valid packet
+bool PacketProcessor::preparePacketToSend() {
+    if (processPacket()) {
+
+      //Set flag to indicate we processed packet
+      buffer.command = buffer.command | B10000000;
+
+      //Calculate new checksum over whole buffer
+      buffer.crc = CRC16::CalculateArray((unsigned char*)&buffer, sizeof(buffer) - 2);
+
+      //Return true if we processed the packet
+      return true;
+    }
+    return false;
+}
+
 //Read cell voltage and return millivolt reading (16 bit unsigned)
 uint16_t PacketProcessor::CellVoltage() {
   //TODO: Get rid of the need for float variables?
