@@ -443,7 +443,7 @@ void DIYBMSServer::rules(AsyncWebServerRequest *request) {
   AsyncResponseStream *response =
       request->beginResponseStream("application/json");
 
-  DynamicJsonDocument doc(2048);
+  DynamicJsonDocument doc(4096);
   JsonObject root = doc.to<JsonObject>();
 
   root["timenow"]=(hour() * 60) + minute();
