@@ -449,7 +449,7 @@ void DIYBMSServer::rules(AsyncWebServerRequest *request) {
   AsyncResponseStream *response =
       request->beginResponseStream("application/json");
 
-  DynamicJsonDocument doc(4096);
+  DynamicJsonDocument doc(2048);
   JsonObject root = doc.to<JsonObject>();
 
   root["timenow"]=(hour() * 60) + minute();
@@ -569,7 +569,7 @@ void DIYBMSServer::modules(AsyncWebServerRequest *request) {
       AsyncResponseStream *response =
           request->beginResponseStream("application/json");
 
-      DynamicJsonDocument doc(2048);
+      DynamicJsonDocument doc(4096);
       JsonObject root = doc.to<JsonObject>();
       JsonObject settings = root.createNestedObject("settings");
 
