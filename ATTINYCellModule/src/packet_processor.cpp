@@ -37,7 +37,7 @@ void PacketProcessor::incrementPacketAddress()
 bool PacketProcessor::BypassOverheatCheck()
 {
   int16_t temp=InternalTemperature();
-  return (temp > _config->BypassOverTempShutdown || temp > DIYBMS_MODULE_SafetyTemperatureCutoff );
+  return (temp > _config->BypassTemperatureSetPoint || temp > DIYBMS_MODULE_SafetyTemperatureCutoff );
 }
 
 // Returns an integer byte indicating the internal thermistor temperature in degrees C
@@ -314,7 +314,7 @@ bool PacketProcessor::processPacket()
     buffer.moduledata[4] = myFloat.word[0];
     buffer.moduledata[5] = myFloat.word[1];
 
-    buffer.moduledata[6] = _config->BypassOverTempShutdown;
+    buffer.moduledata[6] = _config->BypassTemperatureSetPoint;
     buffer.moduledata[7] = _config->BypassThresholdmV;
     buffer.moduledata[8] = _config->Internal_BCoefficient;
     buffer.moduledata[9] = _config->External_BCoefficient;
@@ -351,13 +351,13 @@ bool PacketProcessor::processPacket()
 
     if (buffer.moduledata[6] != 0xFF)
     {
-      _config->BypassOverTempShutdown = buffer.moduledata[6];
+      _config->BypassTemperatureSetPoint = buffer.moduledata[6];
 
 #if defined(DIYBMSMODULEVERSION) && (DIYBMSMODULEVERSION == 420 && !defined(SWAPR19R20))
       //Keep temperature low for modules with R19 and R20 not swapped
-      if (_config->BypassOverTempShutdown > 45)
+      if (_config->BypassTemperatureSetPoint > 45)
       {
-        _config->BypassOverTempShutdown = 45;
+        _config->BypassTemperatureSetPoint = 45;
       }
 #endif
     }
@@ -378,6 +378,8 @@ bool PacketProcessor::processPacket()
 
     //Save settings
     Settings::WriteConfigToEEPROM((uint8_t *)_config, sizeof(CellModuleConfig), EEPROM_CONFIG_ADDRESS);
+
+    SettingsHaveChanged=true;
 
     return true;
   }

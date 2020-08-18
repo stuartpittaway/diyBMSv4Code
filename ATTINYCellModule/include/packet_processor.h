@@ -40,6 +40,8 @@ public:
   {
     _hardware = hardware;
     _config = config;
+    SettingsHaveChanged=false;
+    WeAreInBypass=false;
   }
   ~PacketProcessor() {}
   
@@ -69,6 +71,7 @@ public:
 
   //Value of PWM 0-100
   uint16_t PWMValue;
+  volatile bool SettingsHaveChanged;
 
 private:
   DiyBMSATTiny841 *_hardware;

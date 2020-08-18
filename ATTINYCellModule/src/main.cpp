@@ -91,10 +91,10 @@ void DefaultConfig()
 
 #if defined(DIYBMSMODULEVERSION) && (DIYBMSMODULEVERSION == 420 && !defined(SWAPR19R20))
   //Keep temperature low for modules with R19 and R20 not swapped
-  myConfig.BypassOverTempShutdown = 45;
+  myConfig.BypassTemperatureSetPoint = 45;
 #else
-  //Stop running bypass if temperature over 70 degrees C
-  myConfig.BypassOverTempShutdown = 70;
+  //Stop running bypass if temperature over 65 degrees C
+  myConfig.BypassTemperatureSetPoint = 65;
 #endif
 
   //Start bypass at 4.1V
@@ -209,9 +209,9 @@ void setup()
 
 #if defined(DIYBMSMODULEVERSION) && (DIYBMSMODULEVERSION == 420 && !defined(SWAPR19R20))
   //Keep temperature low for modules with R19 and R20 not swapped
-  if (myConfig.BypassOverTempShutdown > 45)
+  if (myConfig.BypassTemperatureSetPoint > 45)
   {
-    myConfig.BypassOverTempShutdown = 45;
+    myConfig.BypassTemperatureSetPoint = 45;
   }
 #endif
 
@@ -248,6 +248,18 @@ void loop()
     {
       hardware.GreenLedOff();
     }
+  }
+
+  if (PP.SettingsHaveChanged) {
+    //The configuration has just been modified so stop balancing if we are and reset our status
+
+    PP.WeAreInBypass=false;
+    bypassCountDown=0;
+    bypassHasJustFinished=0;
+    pwmrunning=false;
+    PP.PWMValue=0;    
+
+    PP.SettingsHaveChanged=false;
   }
 
   //#ifndef DIYBMS_DEBUG
@@ -295,13 +307,16 @@ void loop()
     //Our cell voltage is OVER the setpoint limit, start draining cell using load bypass resistor
 
     if (!PP.WeAreInBypass)
-    {
+    {     
       //We have just entered the bypass code
       PP.WeAreInBypass = true;
 
       //This controls how many cycles of loop() we make before re-checking the situation
       //about every 30 seconds
       bypassCountDown = 200;
+
+      //Reset PID to defaults
+      myPID.clear();
     }
   }
 
@@ -310,11 +325,11 @@ void loop()
 
     uint8_t exttemp = PP.InternalTemperature() & 0xFF;
 
-    if (exttemp < (myConfig.BypassOverTempShutdown - 10))
+    if (exttemp < (myConfig.BypassTemperatureSetPoint - 10))
     {
       //Full power if we are nowhere near the setpoint (more than 10 degrees C away)
-      hardware.DumpLoadOn();
       hardware.StopTimer2();
+      hardware.DumpLoadOn();
       PP.PWMValue = 100;
       pwmrunning = false;
     }
@@ -330,8 +345,9 @@ void loop()
         //myPID.clear();
       }
 
+
       //Compare the real temperature against max setpoint, we want the PID to keep at this temperature
-      PP.PWMValue = myPID.step(myConfig.BypassOverTempShutdown, exttemp);
+      PP.PWMValue = myPID.step(myConfig.BypassTemperatureSetPoint, exttemp);
 
       //Scale PWM up to 0-10000
       hardware.SetTimer2Value(PP.PWMValue * 100);
@@ -354,7 +370,7 @@ void loop()
 
       //On the next iteration of loop, don't sleep so we are forced to take another
       //cell voltage reading without the bypass being enabled, and we can then
-      //evaludate if we need to stay in bypass mode, we do this a few times
+      //evaluate if we need to stay in bypass mode, we do this a few times
       //as the cell has a tendancy to float back up in voltage once load resistor is removed
       bypassHasJustFinished = 200;
     }
