@@ -324,9 +324,9 @@ void loop()
   if (bypassCountDown > 0)
   {
 
-    uint8_t exttemp = PP.InternalTemperature() & 0xFF;
+    uint8_t temp = PP.InternalTemperature() & 0xFF;
 
-    if (exttemp < (myConfig.BypassTemperatureSetPoint - 10))
+    if (temp < (myConfig.BypassTemperatureSetPoint - 10))
     {
       //Full power if we are nowhere near the setpoint (more than 10 degrees C away)
       hardware.StopTimer2();
@@ -348,13 +348,18 @@ void loop()
 
 
       //Compare the real temperature against max setpoint, we want the PID to keep at this temperature
-      PP.PWMValue = myPID.step(myConfig.BypassTemperatureSetPoint, exttemp);
+      PP.PWMValue = myPID.step(myConfig.BypassTemperatureSetPoint, temp);
 
       //Scale PWM up to 0-10000
       hardware.SetTimer2Value(PP.PWMValue * 100);
     }
 
     bypassCountDown--;
+    
+    if (temp>DIYBMS_MODULE_SafetyTemperatureCutoff) {
+      //Force shut down if temperature is too high
+      bypassCountDown=0;
+    }
 
     if (bypassCountDown == 0)
     {
