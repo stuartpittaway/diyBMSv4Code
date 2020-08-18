@@ -33,11 +33,11 @@ void PacketProcessor::incrementPacketAddress()
   buffer.address = (buffer.address & 0xF0) + (((buffer.address & 0x0F) + 1) & 0x0F);
 }
 
-//Returns TRUE if the internal thermistor is hotter than the required setting
+//Returns TRUE if the internal thermistor is hotter than the required setting (or over max limit)
 bool PacketProcessor::BypassOverheatCheck()
 {
-  int16_t temp=InternalTemperature();
-  return (temp > _config->BypassTemperatureSetPoint || temp > DIYBMS_MODULE_SafetyTemperatureCutoff );
+  int16_t temp = InternalTemperature();
+  return (temp > _config->BypassTemperatureSetPoint || temp > DIYBMS_MODULE_SafetyTemperatureCutoff);
 }
 
 // Returns an integer byte indicating the internal thermistor temperature in degrees C
@@ -225,6 +225,12 @@ bool PacketProcessor::processPacket()
 {
   switch (buffer.command & 0x0F)
   {
+  case COMMAND::ReadModuleCodeVersion:
+  {
+    //Read the last 2 temperature values recorded by the ADC (both internal and external)
+    buffer.moduledata[mymoduleaddress] = MODULE_FIRMWARE_VERSION;
+    return true;
+  }
 
   case COMMAND::SetBankIdentity:
   {
@@ -379,7 +385,7 @@ bool PacketProcessor::processPacket()
     //Save settings
     Settings::WriteConfigToEEPROM((uint8_t *)_config, sizeof(CellModuleConfig), EEPROM_CONFIG_ADDRESS);
 
-    SettingsHaveChanged=true;
+    SettingsHaveChanged = true;
 
     return true;
   }

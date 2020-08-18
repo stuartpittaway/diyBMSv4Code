@@ -234,8 +234,9 @@ void setup()
 void loop()
 {
   //This loop runs around 3 times per second when the module is in bypass
-
   wdt_reset();
+
+  //if (bypassHasJustFinished>0)  {    hardware.BlueLedOn();  }else {    hardware.BlueLedOff();  }
 
   //if (hztiming) {  hardware.SparePinOn();} else {  hardware.SparePinOff();}hztiming=!hztiming;
 
@@ -314,7 +315,7 @@ void loop()
       //This controls how many cycles of loop() we make before re-checking the situation
       //about every 30 seconds
       bypassCountDown = 200;
-
+      bypassHasJustFinished=0;
       //Reset PID to defaults
       myPID.clear();
     }
