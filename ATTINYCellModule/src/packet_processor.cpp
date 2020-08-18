@@ -36,7 +36,8 @@ void PacketProcessor::incrementPacketAddress()
 //Returns TRUE if the internal thermistor is hotter than the required setting
 bool PacketProcessor::BypassOverheatCheck()
 {
-  return (InternalTemperature() > _config->BypassOverTempShutdown);
+  int16_t temp=InternalTemperature();
+  return (temp > _config->BypassOverTempShutdown || temp > DIYBMS_MODULE_SafetyTemperatureCutoff );
 }
 
 // Returns an integer byte indicating the internal thermistor temperature in degrees C
@@ -251,11 +252,13 @@ bool PacketProcessor::processPacket()
 
     if (BypassOverheatCheck())
     {
+      //Set bit
       buffer.moduledata[mymoduleaddress] = buffer.moduledata[mymoduleaddress] | 0x4000;
     }
 
     if (WeAreInBypass)
     {
+      //Set bit
       buffer.moduledata[mymoduleaddress] = buffer.moduledata[mymoduleaddress] | 0x8000;
     }
 
