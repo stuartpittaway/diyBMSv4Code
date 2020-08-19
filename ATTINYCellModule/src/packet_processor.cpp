@@ -286,7 +286,8 @@ bool PacketProcessor::processPacket()
   case COMMAND::ReadBalancePowerPWM:
   {
     //Read the last PWM value
-    buffer.moduledata[mymoduleaddress] = IsBypassActive() ? (PWMValue & 0xFF) : 0;
+    //Use WeAreInBypass instead of IsByPassActive() as the later also includes the "settle" time
+    buffer.moduledata[mymoduleaddress] = WeAreInBypass ? (PWMValue & 0xFF) : 0;
     return true;
   }
 
