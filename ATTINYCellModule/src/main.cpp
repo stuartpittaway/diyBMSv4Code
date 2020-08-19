@@ -62,9 +62,6 @@ DiyBMSATTiny841 hardware;
 PacketProcessor PP(&hardware, &myConfig);
 
 volatile bool wdt_triggered = false;
-uint16_t bypassCountDown = 0;
-uint8_t bypassHasJustFinished = 0;
-bool pwmrunning = false;
 
 void DefaultConfig()
 {
@@ -253,18 +250,16 @@ void loop()
 
   if (PP.SettingsHaveChanged) {
     //The configuration has just been modified so stop balancing if we are and reset our status
-
     PP.WeAreInBypass=false;
-    bypassCountDown=0;
-    bypassHasJustFinished=0;
-    pwmrunning=false;
+    PP.bypassCountDown=0;
+    PP.bypassHasJustFinished=0;
+    PP.pwmrunning=false;
     PP.PWMValue=0;    
-
     PP.SettingsHaveChanged=false;
   }
 
   //#ifndef DIYBMS_DEBUG
-  if (!PP.WeAreInBypass && bypassHasJustFinished == 0)
+  if (!PP.WeAreInBypass && PP.bypassHasJustFinished == 0)
   {
     //We don't sleep if we are in bypass mode or just after completing bypass
     hardware.EnableStartFrameDetection();
@@ -314,14 +309,14 @@ void loop()
 
       //This controls how many cycles of loop() we make before re-checking the situation
       //about every 30 seconds
-      bypassCountDown = 200;
-      bypassHasJustFinished=0;
+      PP.bypassCountDown = 200;
+      PP.bypassHasJustFinished=0;
       //Reset PID to defaults
       myPID.clear();
     }
   }
 
-  if (bypassCountDown > 0)
+  if (PP.bypassCountDown > 0)
   {
 
     uint8_t temp = PP.InternalTemperature() & 0xFF;
@@ -332,17 +327,17 @@ void loop()
       hardware.StopTimer2();
       hardware.DumpLoadOn();
       PP.PWMValue = 100;
-      pwmrunning = false;
+      PP.pwmrunning = false;
     }
     else
     {
-      if (!pwmrunning)
+      if (!PP.pwmrunning)
       {
         //We have approached the set point, enable PWM
         hardware.DumpLoadOff();
         //Start timer2 with zero value
         hardware.StartTimer2();
-        pwmrunning = true;
+        PP.pwmrunning = true;
         //myPID.clear();
       }
 
@@ -354,17 +349,17 @@ void loop()
       hardware.SetTimer2Value(PP.PWMValue * 100);
     }
 
-    bypassCountDown--;
+    PP.bypassCountDown--;
     
     if (temp>DIYBMS_MODULE_SafetyTemperatureCutoff) {
       //Force shut down if temperature is too high
-      bypassCountDown=0;
+      PP.bypassCountDown=0;
     }
 
-    if (bypassCountDown == 0)
+    if (PP.bypassCountDown == 0)
     {
       //Switch everything off for this cycle
-      pwmrunning = false;
+      PP.pwmrunning = false;
 
       PP.WeAreInBypass = false;
 
@@ -378,7 +373,7 @@ void loop()
       //cell voltage reading without the bypass being enabled, and we can then
       //evaluate if we need to stay in bypass mode, we do this a few times
       //as the cell has a tendancy to float back up in voltage once load resistor is removed
-      bypassHasJustFinished = 200;
+      PP.bypassHasJustFinished = 200;
     }
   }
 
@@ -404,8 +399,8 @@ void loop()
     }
   }
 
-  if (bypassHasJustFinished > 0)
+  if (PP.bypassHasJustFinished > 0)
   {
-    bypassHasJustFinished--;
+    PP.bypassHasJustFinished--;
   }
 }

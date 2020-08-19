@@ -42,6 +42,9 @@ public:
     _config = config;
     SettingsHaveChanged=false;
     WeAreInBypass=false;
+    bypassCountDown = 0;
+    bypassHasJustFinished = 0;
+    pwmrunning = false;
   }
   ~PacketProcessor() {}
   
@@ -72,6 +75,14 @@ public:
   //Value of PWM 0-100
   uint16_t PWMValue;
   volatile bool SettingsHaveChanged;
+
+  uint16_t bypassCountDown;
+  uint8_t bypassHasJustFinished;
+  bool pwmrunning;
+
+  bool IsBypassActive() {
+    return WeAreInBypass || bypassHasJustFinished>0 || pwmrunning;
+  }
 
 private:
   DiyBMSATTiny841 *_hardware;

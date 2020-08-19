@@ -262,7 +262,7 @@ bool PacketProcessor::processPacket()
       buffer.moduledata[mymoduleaddress] = buffer.moduledata[mymoduleaddress] | 0x4000;
     }
 
-    if (WeAreInBypass)
+    if (IsBypassActive())
     {
       //Set bit
       buffer.moduledata[mymoduleaddress] = buffer.moduledata[mymoduleaddress] | 0x8000;
@@ -292,7 +292,7 @@ bool PacketProcessor::processPacket()
   case COMMAND::ReadBalancePowerPWM:
   {
     //Read the last PWM value
-    buffer.moduledata[mymoduleaddress] = WeAreInBypass ? (PWMValue & 0xFF) : 0;
+    buffer.moduledata[mymoduleaddress] = IsBypassActive() ? (PWMValue & 0xFF) : 0;
     return true;
   }
 
