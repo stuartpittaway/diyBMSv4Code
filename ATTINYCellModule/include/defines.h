@@ -62,8 +62,8 @@ enum COMMAND: uint8_t
     ReadBadPacketCounter=B00000100,
     ReadSettings=B00000101,
     WriteSettings=B00000110,
-    ReadBalancePowerPWM=B00000111,
-    ReadModuleCodeVersion=B00001000
+    ReadBalancePowerPWM=B00000111
+    
 
     // 0000 0000  = set bank identity
     // 0000 0001  = read voltage and status

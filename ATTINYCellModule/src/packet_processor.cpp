@@ -225,12 +225,6 @@ bool PacketProcessor::processPacket()
 {
   switch (buffer.command & 0x0F)
   {
-  case COMMAND::ReadModuleCodeVersion:
-  {
-    //Read the last 2 temperature values recorded by the ADC (both internal and external)
-    buffer.moduledata[mymoduleaddress] = MODULE_FIRMWARE_VERSION;
-    return true;
-  }
 
   case COMMAND::SetBankIdentity:
   {
@@ -326,6 +320,8 @@ bool PacketProcessor::processPacket()
     buffer.moduledata[9] = _config->External_BCoefficient;
     buffer.moduledata[10] = DIYBMSMODULEVERSION;
 
+    //Version of firmware.
+    buffer.moduledata[15] = MODULE_FIRMWARE_VERSION;
     return true;
   }
 
