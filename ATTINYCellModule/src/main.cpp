@@ -228,6 +228,18 @@ void setup()
   myPacketSerial.setPacketHandler(&onPacketReceived);
 }
 
+void StopBalance() {
+    PP.WeAreInBypass=false;
+    PP.bypassCountDown=0;
+    PP.bypassHasJustFinished=0;
+    PP.pwmrunning=false;
+    PP.PWMValue=0;    
+    PP.SettingsHaveChanged=false;
+
+    hardware.StopTimer2();
+    hardware.DumpLoadOff();
+}
+
 void loop()
 {
   //This loop runs around 3 times per second when the module is in bypass
@@ -250,12 +262,7 @@ void loop()
 
   if (PP.SettingsHaveChanged) {
     //The configuration has just been modified so stop balancing if we are and reset our status
-    PP.WeAreInBypass=false;
-    PP.bypassCountDown=0;
-    PP.bypassHasJustFinished=0;
-    PP.pwmrunning=false;
-    PP.PWMValue=0;    
-    PP.SettingsHaveChanged=false;
+    StopBalance();
   }
 
   //#ifndef DIYBMS_DEBUG
@@ -280,11 +287,23 @@ void loop()
     //Flash green LED twice after a watchdog wake up
     hardware.double_tap_green_led();
 #endif
+
+    //Setup IO ports
+    hardware.ConfigurePorts();
+
+    //More power saving changes
+    hardware.EnableSerial0();
+
+    //If we have just woken up, we shouldn't be in balance
+    //safety check that we are not
+    StopBalance();
+
+
   }
 
   //We always take a voltage and temperature reading on every loop cycle to check if we need to go into bypass
   //this is also triggered by the watchdog should comms fail or the module is running standalone
-  //Probably over kill to do it this frequently
+
   hardware.ReferenceVoltageOn();
 
   //allow reference voltage to stabalize
@@ -298,12 +317,23 @@ void loop()
 
   hardware.ReferenceVoltageOff();
 
-  if (PP.BypassCheck())
+  uint8_t temp = PP.InternalTemperature() & 0xFF;
+
+  if (temp>DIYBMS_MODULE_SafetyTemperatureCutoff) {
+    //Force shut down if temperature is too high
+    //although this does run the risk that the voltage on the cell will go high
+    //but the BMS controller should shut off the charger in this situation
+    StopBalance();
+  }
+
+
+  //Only enter bypass if the board temperature is below safety
+  if (PP.BypassCheck() && temp<DIYBMS_MODULE_SafetyTemperatureCutoff)
   {
-    //Our cell voltage is OVER the setpoint limit, start draining cell using load bypass resistor
+    //Our cell voltage is OVER the voltage setpoint limit, start draining cell using bypass resistor
 
     if (!PP.WeAreInBypass)
-    {     
+    {
       //We have just entered the bypass code
       PP.WeAreInBypass = true;
 
@@ -311,6 +341,7 @@ void loop()
       //about every 30 seconds
       PP.bypassCountDown = 200;
       PP.bypassHasJustFinished=0;
+      
       //Reset PID to defaults
       myPID.clear();
     }
@@ -318,9 +349,6 @@ void loop()
 
   if (PP.bypassCountDown > 0)
   {
-
-    uint8_t temp = PP.InternalTemperature() & 0xFF;
-
     if (temp < (myConfig.BypassTemperatureSetPoint - 10))
     {
       //Full power if we are nowhere near the setpoint (more than 10 degrees C away)
@@ -341,7 +369,6 @@ void loop()
         //myPID.clear();
       }
 
-
       //Compare the real temperature against max setpoint, we want the PID to keep at this temperature
       PP.PWMValue = myPID.step(myConfig.BypassTemperatureSetPoint, temp);
 
@@ -351,24 +378,11 @@ void loop()
 
     PP.bypassCountDown--;
     
-    if (temp>DIYBMS_MODULE_SafetyTemperatureCutoff) {
-      //Force shut down if temperature is too high
-      PP.bypassCountDown=0;
-    }
 
     if (PP.bypassCountDown == 0)
     {
       //Switch everything off for this cycle
-      PP.pwmrunning = false;
-
-      PP.WeAreInBypass = false;
-
-      //myPID.clear();
-      hardware.StopTimer2();
-
-      //switch off
-      hardware.DumpLoadOff();
-
+      StopBalance();
       //On the next iteration of loop, don't sleep so we are forced to take another
       //cell voltage reading without the bypass being enabled, and we can then
       //evaluate if we need to stay in bypass mode, we do this a few times
@@ -399,8 +413,6 @@ void loop()
     }
   }
 
-  if (PP.bypassHasJustFinished > 0)
-  {
-    PP.bypassHasJustFinished--;
-  }
+  if (PP.bypassHasJustFinished > 0)   {     PP.bypassHasJustFinished--;  }
+
 }
