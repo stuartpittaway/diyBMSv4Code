@@ -179,6 +179,26 @@ ISR(USART0_START_vect)
 //Settings for V4.00 boards with 2R2 resistors = (4.0, 0.5, 0.2, 6, 8, false);
 FastPID myPID(4.0, 0.5, 0.2, 6, 8, false);
 
+void ValidateConfiguration() {
+  //My Bank should never be over 3
+  if (myConfig.mybank>3) {
+    myConfig.mybank=0;
+  }
+
+  if (myConfig.Calibration<1.9) {
+    myConfig.Calibration=2.21000;
+  }
+
+  #if defined(DIYBMSMODULEVERSION) && (DIYBMSMODULEVERSION == 420 && !defined(SWAPR19R20))
+    //Keep temperature low for modules with R19 and R20 not swapped
+    if (myConfig.BypassOverTempShutdown > 45)
+    {
+      myConfig.BypassOverTempShutdown = 45;
+    }
+  #endif
+
+}
+
 void setup()
 {
   //Must be first line of code
@@ -200,17 +220,13 @@ void setup()
   if (!Settings::ReadConfigFromEEPROM((uint8_t *)&myConfig, sizeof(myConfig), EEPROM_CONFIG_ADDRESS))
   {
     DefaultConfig();
-    //Save settings
-    Settings::WriteConfigToEEPROM((uint8_t *)&myConfig, sizeof(myConfig), EEPROM_CONFIG_ADDRESS);
+    //No need to save here as the default config will load every time if the CRC is wrong
+    //Settings::WriteConfigToEEPROM((uint8_t *)&myConfig, sizeof(myConfig), EEPROM_CONFIG_ADDRESS);
   }
 
-#if defined(DIYBMSMODULEVERSION) && (DIYBMSMODULEVERSION == 420 && !defined(SWAPR19R20))
-  //Keep temperature low for modules with R19 and R20 not swapped
-  if (myConfig.BypassTemperatureSetPoint > 45)
-  {
-    myConfig.BypassTemperatureSetPoint = 45;
-  }
-#endif
+
+  ValidateConfiguration();
+
 
   hardware.double_tap_green_led();
 
