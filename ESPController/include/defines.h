@@ -191,6 +191,10 @@ struct CellModuleInfo
   uint16_t BoardVersionNumber;
   //Value of PWM timer for load shedding
   uint16_t PWMValue;
+  //Total PWM time
+  uint32_t PWMTime;
+  //bleeded mAh calculated
+  float mAh;
 };
 
 // This enum holds the states the controller goes through whilst

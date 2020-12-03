@@ -250,6 +250,7 @@ Ticker wifiReconnectTimer;
 Ticker mqttReconnectTimer;
 Ticker myTimerSendMqttPacket;
 Ticker myTimerSendMqttStatus;
+Ticker myTimercalculateBalancedEnergy;
 Ticker myTimerSendInfluxdbPacket;
 Ticker myTimerSwitchPulsedRelay;
 
@@ -941,6 +942,31 @@ void onMqttDisconnect(AsyncMqttClientDisconnectReason reason)
   }
 }
 
+void calculateBalancedEnergy()
+{
+  //Calculate the total pwm time of each cell
+   for (uint8_t i = 0; i < mysettings.totalNumberOfSeriesModules * mysettings.totalNumberOfBanks; i++)
+  {
+
+    //IF data in the module is valid and we are running bypass
+    if (cmi[i].valid && cmi[i].inBypass)
+    {
+
+      // Calculate the total of pwm time used up
+      // Due to that we also stop bypass during voltage check we should retract those ticks. For that is estimated!!
+      // Should meassure it up how long time it takes to stop check voltage. 
+      cmi[i].PWMTime += cmi[i].PWMValue*2*0.9;
+      // We got 100 ticks per second due to PWM being 0-100. We got 3600 seconds per hour. This gives us the value of a tick. This is uAh
+      
+      float tickValue = (cmi[i].voltagemV / cmi[i].LoadResistance) / 3600 / 100;
+      cmi[i].mAh += (tickValue/1000 * (cmi[i].PWMValue*2.0)); // Since we check each 2 seconds we need to double it up and convert to mAh from uAh. 
+
+    }
+  }
+
+}
+
+
 void sendMqttStatus()
 {
   if (!mysettings.mqtt_enabled && !mqttClient.connected())
@@ -971,10 +997,9 @@ void sendMqttStatus()
   {
     cellVoltage += cmi[i].voltagemV;
   }
+
   //root["cells"] = mysettings.totalNumberOfSeriesModules;
   root["totalVoltage"] = (float)cellVoltage/1000.0;
-
-
 
   serializeJson(doc, jsonbuffer, sizeof(jsonbuffer));
   sprintf(topic, "%s/%s", mysettings.mqtt_topic, "status");
@@ -1008,15 +1033,18 @@ void sendMqttPacket()
       uint8_t module = i - (bank * mysettings.totalNumberOfSeriesModules);
 
       StaticJsonDocument<200> doc;
-      doc["voltage"] = (float)cmi[i].voltagemV / 1000.0;
-      doc["vMax"] = (float)cmi[i].voltagemVMax/1000.0;
-      doc["vMin"] = (float)cmi[i].voltagemVMin/1000.0;
-      doc["inttemp"] = cmi[i].internalTemp;
-      doc["exttemp"] = cmi[i].externalTemp;
-      doc["bypass"] = cmi[i].inBypass ? 1 : 0;
-      doc["bypassT"] = cmi[i].bypassOverTemp ? 1:0;
-      doc["bpc"] = cmi[i].badPacketCount;
-      doc["PWM"] = cmi[i].PWMValue;
+      doc["voltage"] =  (float)cmi[i].voltagemV / 1000.0;
+      doc["vMax"] =     (float)cmi[i].voltagemVMax/1000.0;
+      doc["vMin"] =     (float)cmi[i].voltagemVMin/1000.0;
+      doc["inttemp"] =  cmi[i].internalTemp;
+      doc["exttemp"] =  cmi[i].externalTemp;
+      doc["bypass"] =   cmi[i].inBypass ? 1 : 0;
+      doc["bypassT"] =  cmi[i].bypassOverTemp ? 1:0;
+      doc["bpc"] =      cmi[i].badPacketCount;
+      doc["PWM"] =      cmi[i].PWMValue;
+      doc["version"] =  cmi[i].BoardVersionNumber;
+      doc["PWMTime"] =  cmi[i].PWMTime;
+      doc["mAh"] =    cmi[i].mAh;
       serializeJson(doc, jsonbuffer, sizeof(jsonbuffer));
 
       sprintf(topic, "%s/%d/%d", mysettings.mqtt_topic, bank, module);
@@ -1333,6 +1361,9 @@ void setup()
 
   //Ensure we service the cell modules every 4 seconds
   myTimer.attach(4, timerEnqueueCallback);
+
+  //Calculate the total PWM time
+  myTimercalculateBalancedEnergy.attach(2, calculateBalancedEnergy);
 
   //Process rules every 5 seconds
   myTimerRelay.attach(5, timerProcessRules);
