@@ -249,6 +249,7 @@ Ticker myLazyTimer;
 Ticker wifiReconnectTimer;
 Ticker mqttReconnectTimer;
 Ticker myTimerSendMqttPacket;
+Ticker myTimerSendMqttStatus;
 Ticker myTimerSendInfluxdbPacket;
 Ticker myTimerSwitchPulsedRelay;
 
@@ -920,6 +921,7 @@ void onWifiDisconnect(WiFiEvent_t event, WiFiEventInfo_t info)
   // ensure we don't reconnect to MQTT while reconnecting to Wi-Fi
   mqttReconnectTimer.detach();
   myTimerSendMqttPacket.detach();
+  myTimerSendMqttStatus.detach();
   myTimerSendInfluxdbPacket.detach();
 
   wifiReconnectTimer.once(2, connectToWifi);
@@ -930,6 +932,8 @@ void onMqttDisconnect(AsyncMqttClientDisconnectReason reason)
   SERIAL_DEBUG.println(F("Disconnected from MQTT."));
 
   myTimerSendMqttPacket.detach();
+  myTimerSendMqttStatus.detach();
+
 
   if (WiFi.isConnected())
   {
@@ -937,9 +941,7 @@ void onMqttDisconnect(AsyncMqttClientDisconnectReason reason)
   }
 }
 
-//Send a few MQTT packets and keep track so we send the next batch on following calls
-uint8_t mqttStartModule = 0;
-void sendMqttPacket()
+void sendMqttStatus()
 {
   if (!mysettings.mqtt_enabled && !mqttClient.connected())
     return;
@@ -947,7 +949,52 @@ void sendMqttPacket()
   //SERIAL_DEBUG.println("Sending MQTT");
 
   char topic[80];
-  char jsonbuffer[100];
+  char jsonbuffer[200];
+  DynamicJsonDocument doc(200);
+  JsonObject root = doc.to<JsonObject>();
+
+  root["uptime"] = millis()/1000; // I want to know the uptime of the device. 
+
+  JsonObject monitor = root.createNestedObject("monitor");
+
+  // Set error flag if we have attempted to send 2*number of banks without a reply
+  monitor["commserr"] = receiveProc.HasCommsTimedOut() ? 1:0;
+
+  monitor["sent"] = prg.packetsGenerated;
+  monitor["received"] = receiveProc.packetsReceived;
+  monitor["badcrc"] = receiveProc.totalCRCErrors;
+  monitor["ignored"] = receiveProc.totalNotProcessedErrors;
+  monitor["roundtrip"] = receiveProc.packetTimerMillisecond;
+
+  uint16_t cellVoltage = 0;
+  for (uint8_t i = 0; i < mysettings.totalNumberOfSeriesModules; i++)
+  {
+    cellVoltage += cmi[i].voltagemV;
+  }
+  //root["cells"] = mysettings.totalNumberOfSeriesModules;
+  root["totalVoltage"] = (float)cellVoltage/1000.0;
+
+
+
+  serializeJson(doc, jsonbuffer, sizeof(jsonbuffer));
+  sprintf(topic, "%s/%s", mysettings.mqtt_topic, "status");
+  mqttClient.publish(topic, 0, false, jsonbuffer);
+  SERIAL_DEBUG.println(topic);
+}
+
+
+//Send a few MQTT packets and keep track so we send the next batch on following calls
+uint8_t mqttStartModule = 0;
+void sendMqttPacket()
+{
+  //Dont send any mqtt about the cells if we have comms error or no connection.
+  if ((!mysettings.mqtt_enabled && !mqttClient.connected()) || receiveProc.HasCommsTimedOut())
+    return;
+
+  //SERIAL_DEBUG.println("Sending MQTT");
+
+  char topic[80];
+  char jsonbuffer[200];
 
   uint8_t counter = 0;
 
@@ -960,11 +1007,16 @@ void sendMqttPacket()
       uint8_t bank = i / mysettings.totalNumberOfSeriesModules;
       uint8_t module = i - (bank * mysettings.totalNumberOfSeriesModules);
 
-      StaticJsonDocument<100> doc;
+      StaticJsonDocument<200> doc;
       doc["voltage"] = (float)cmi[i].voltagemV / 1000.0;
+      doc["vMax"] = (float)cmi[i].voltagemVMax/1000.0;
+      doc["vMin"] = (float)cmi[i].voltagemVMin/1000.0;
       doc["inttemp"] = cmi[i].internalTemp;
       doc["exttemp"] = cmi[i].externalTemp;
       doc["bypass"] = cmi[i].inBypass ? 1 : 0;
+      doc["bypassT"] = cmi[i].bypassOverTemp ? 1:0;
+      doc["bpc"] = cmi[i].badPacketCount;
+      doc["PWM"] = cmi[i].PWMValue;
       serializeJson(doc, jsonbuffer, sizeof(jsonbuffer));
 
       sprintf(topic, "%s/%d/%d", mysettings.mqtt_topic, bank, module);
@@ -1001,6 +1053,8 @@ void onMqttConnect(bool sessionPresent)
 {
   SERIAL_DEBUG.println(F("Connected to MQTT."));
   myTimerSendMqttPacket.attach(5, sendMqttPacket);
+  myTimerSendMqttStatus.attach(25,sendMqttStatus);
+
 }
 
 void LoadConfiguration()
