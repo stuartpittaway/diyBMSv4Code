@@ -986,17 +986,18 @@ void calculateBalancedEnergy()
   {
 
     //IF data in the module is valid and we are running bypass
-    if (cmi[i].valid && cmi[i].inBypass)
+    if (cmi[i].valid && cmi[i].PWMValue)
     {
 
       // Calculate the total of pwm time used up
       // Due to that we also stop bypass during voltage check we should retract those ticks. For that is estimated!!
       // Should meassure it up how long time it takes to stop check voltage. 
-      cmi[i].PWMTime += cmi[i].PWMValue*2*0.9;
-      // We got 100 ticks per second due to PWM being 0-100. We got 3600 seconds per hour. This gives us the value of a tick. This is uAh
+      // the number 0.63 is an tested estimated number on how far off we are from reality
+      cmi[i].PWMTime += cmi[i].PWMValue*2*0.63;
       
+      // We got 100 ticks per second due to PWM being 0-100. We got 3600 seconds per hour. This gives us the value of a tick. This is mAh. Note that we use mV as base unit!!
       float tickValue = (cmi[i].voltagemV / cmi[i].LoadResistance) / 3600 / 100;
-      cmi[i].mAh += (tickValue/1000 * (cmi[i].PWMValue*2.0)); // Since we check each 2 seconds we need to double it up and convert to mAh from uAh. 
+      cmi[i].mAh += (tickValue * (cmi[i].PWMValue*2.0)); // Since we check each 2 seconds we need to double it up. 
 
     }
   }
@@ -1097,7 +1098,7 @@ void sendMqttPacket()
 
     //After transmitting this many packets over MQTT, store our current state and exit the function.
     //this prevents flooding the ESP controllers wifi stack and potentially causing reboots/fatal exceptions
-    if (counter == 6)
+    if (counter == 10)
     {
       mqttStartModule = i + 1;
 
