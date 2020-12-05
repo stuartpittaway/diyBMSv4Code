@@ -45,6 +45,7 @@ See reasons why here https://github.com/me-no-dev/ESPAsyncWebServer/issues/60
 //#define PACKET_LOGGING_RECEIVE
 //#define PACKET_LOGGING_SEND
 //#define RULES_LOGGING
+//#define MQTT_LOGGING
 
 #include "FS.h"
 
@@ -89,6 +90,7 @@ HAL_ESP32 hal;
 #include "Rules.h"
 
 volatile bool emergencyStop = false;
+volatile bool WifiDisconnected = true;
 
 Rules rules;
 
@@ -129,12 +131,13 @@ void ledoff_task(void *param)
   {
     //Wait until this task is triggered https://www.freertos.org/ulTaskNotifyTake.html
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-    //Wait 100ms
-    vTaskDelay(100 / portTICK_PERIOD_MS);
+    //Wait 60ms
+    vTaskDelay(60 / portTICK_PERIOD_MS);
     //LED OFF
     QueueLED(0);
   }
 }
+
 // Handle all calls to i2c devices in this single task
 // Provides thread safe mechanism to talk to i2c
 void i2c_task(void *param)
@@ -228,6 +231,8 @@ CellModuleInfo cmi[maximum_controller_cell_modules];
 // Instantiate queue to hold packets ready for transmission
 cppQueue requestQueue(sizeof(PacketStruct), 16, FIFO);
 
+cppQueue replyQueue(sizeof(PacketStruct), 8, FIFO);
+
 PacketRequestGenerator prg = PacketRequestGenerator(&requestQueue);
 
 PacketReceiveProcessor receiveProc = PacketReceiveProcessor();
@@ -245,6 +250,7 @@ WiFiEventHandler wifiDisconnectHandler;
 Ticker myTimerRelay;
 Ticker myTimer;
 Ticker myTransmitTimer;
+Ticker myReplyTimer;
 Ticker myLazyTimer;
 Ticker wifiReconnectTimer;
 Ticker mqttReconnectTimer;
@@ -269,18 +275,15 @@ void dumpByte(uint8_t data)
     SERIAL_DEBUG.print('0');
   SERIAL_DEBUG.print(data, HEX);
 }
-void dumpPacketToDebug(PacketStruct *buffer)
+void dumpPacketToDebug(char indicator, PacketStruct *buffer)
 {
   //Filter on some commands
   //if ((buffer->command & 0x0F) != COMMAND::Timing)    return;
 
-  SERIAL_DEBUG.print(millis(), HEX);
+  SERIAL_DEBUG.print(millis());
   SERIAL_DEBUG.print(':');
 
-  if ((buffer->command & B10000000) > 0)
-    SERIAL_DEBUG.print('R');
-  else
-    SERIAL_DEBUG.print('S');
+  SERIAL_DEBUG.print(indicator);
 
   SERIAL_DEBUG.print(':');
   dumpByte(buffer->start_address);
@@ -293,6 +296,9 @@ void dumpPacketToDebug(PacketStruct *buffer)
 
   switch (buffer->command & 0x0F)
   {
+  case COMMAND::ResetBadPacketCounter:
+    SERIAL_DEBUG.print(F(" ResetC   "));
+    break;
   case COMMAND::ReadVoltageAndStatus:
     SERIAL_DEBUG.print(F(" RdVolt   "));
     break;
@@ -395,81 +401,106 @@ void processSyncEvent(NTPSyncEvent_t ntpEvent)
 }
 #endif
 
+void serviceReplyQueue()
+{
+  //if (replyQueue.isEmpty()) return;
+
+  while (!replyQueue.isEmpty())
+  {
+    PacketStruct ps;
+    replyQueue.pop(&ps);
+
+#if defined(PACKET_LOGGING_RECEIVE)
+    // Process decoded incoming packet
+    dumpPacketToDebug('R', &ps);
+#endif
+
+    if (receiveProc.ProcessReply(&ps))
+    {
+      //Success, do nothing
+    }
+    else
+    {
+#if defined(ESP32)
+      //Error blue
+      QueueLED(B00000001);
+#endif
+      SERIAL_DEBUG.print(F("*FAIL*"));
+      dumpPacketToDebug('F', &ps);
+    }
+  }
+}
+
 void onPacketReceived()
 {
 #if defined(ESP8266)
   hal.GreenLedOn();
 #endif
-
-#if defined(PACKET_LOGGING_RECEIVE)
-  // Process decoded incoming packet
-  //SERIAL_DEBUG.print("R:");
-  dumpPacketToDebug((PacketStruct *)SerialPacketReceiveBuffer);
-#endif
-
-  if (receiveProc.ProcessReply((PacketStruct *)SerialPacketReceiveBuffer))
-  {
 #if defined(ESP32)
-    QueueLED(B00000100);
+  QueueLED(B00000100);
 #endif
+
+  PacketStruct ps;
+  memcpy(&ps, SerialPacketReceiveBuffer, sizeof(PacketStruct));
+
+  if ((ps.command & 0x0F) == COMMAND::Timing)
+  {
+    //Timestamp at the earliest possible moment
+    uint32_t t = millis();
+    ps.moduledata[2] = (t & 0xFFFF0000) >> 16;
+    ps.moduledata[3] = t & 0x0000FFFF;
+    //Ensure CRC is correct
+    ps.crc = CRC16::CalculateArray((uint8_t *)&ps, sizeof(PacketStruct) - 2);
   }
-  else
+
+  if (!replyQueue.push(&ps))
   {
-#if defined(ESP32)
-    //Error blue
-    QueueLED(B00000001);
-#endif
-    SERIAL_DEBUG.print(F("*FAIL*"));
-    dumpPacketToDebug((PacketStruct *)SerialPacketReceiveBuffer);
+    SERIAL_DEBUG.println(F("*Failed to queue reply*"));
   }
 
   //#if defined(PACKET_LOGGING_RECEIVE)
-  //  SERIAL_DEBUG.println("");
+  // Process decoded incoming packet
+  //dumpPacketToDebug('Q', &ps);
   //#endif
 
 #if defined(ESP8266)
   hal.GreenLedOff();
-#else
-  //Fire task to switch off LED in 100ms
+#endif
+#if defined(ESP32)
+  //Fire task to switch off LED in a few ms
   xTaskNotify(ledoff_task_handle, 0x00, eNotifyAction::eNoAction);
 #endif
 }
 
 void timerTransmitCallback()
 {
+  if (requestQueue.isEmpty())
+    return;
+
   // Called to transmit the next packet in the queue need to ensure this procedure is called more frequently than
   // items are added into the queue
-  if (!requestQueue.isEmpty())
+
+  PacketStruct transmitBuffer;
+
+  requestQueue.pop(&transmitBuffer);
+  sequence++;
+  transmitBuffer.sequence = sequence;
+
+  if (transmitBuffer.command == COMMAND::Timing)
   {
-    PacketStruct transmitBuffer;
-
-    //Wake up the connected cell module from sleep
-    //SERIAL_DATA.write(framingmarker);
-    //myPacketSerial.sendStartFrame();
-    //delay(3);
-
-    requestQueue.pop(&transmitBuffer);
-    sequence++;
-    transmitBuffer.sequence = sequence;
-
-    if (transmitBuffer.command == COMMAND::Timing)
-    {
-      //Timestamp at the last possible moment
-      uint32_t t = millis();
-      transmitBuffer.moduledata[0] = (t & 0xFFFF0000) >> 16;
-      transmitBuffer.moduledata[1] = t & 0x0000FFFF;
-    }
-
-    transmitBuffer.crc = CRC16::CalculateArray((uint8_t *)&transmitBuffer, sizeof(PacketStruct) - 2);
-    myPacketSerial.sendBuffer((byte *)&transmitBuffer); //, sizeof(transmitBuffer));
-
-    // Output the packet we just transmitted to debug console
-#if defined(PACKET_LOGGING_SEND)
-    dumpPacketToDebug(&transmitBuffer);
-    //SERIAL_DEBUG.print("/Q:");
-    //SERIAL_DEBUG.println(requestQueue.getCount());
-#endif
+    //Timestamp at the last possible moment
+    uint32_t t = millis();
+    transmitBuffer.moduledata[0] = (t & 0xFFFF0000) >> 16;
+    transmitBuffer.moduledata[1] = t & 0x0000FFFF;
   }
+
+  transmitBuffer.crc = CRC16::CalculateArray((uint8_t *)&transmitBuffer, sizeof(PacketStruct) - 2);
+  myPacketSerial.sendBuffer((byte *)&transmitBuffer);
+
+  // Output the packet we just transmitted to debug console
+#if defined(PACKET_LOGGING_SEND)
+  dumpPacketToDebug('S', &transmitBuffer);
+#endif
 }
 
 //Runs the rules and populates rule_outcome array with true/false for each rule
@@ -688,20 +719,19 @@ void timerProcessRules()
 #endif
 }
 
-uint8_t counter = 0;
+//uint8_t counter = 0;
 
 void timerEnqueueCallback()
 {
   //this is called regularly on a timer, it determines what request to make to the modules (via the request queue)
-  uint8_t b = 0;
+  uint16_t i = 0;
+  uint16_t max = mysettings.totalNumberOfBanks * mysettings.totalNumberOfSeriesModules;
 
-  uint8_t max = mysettings.totalNumberOfBanks * mysettings.totalNumberOfSeriesModules;
   uint8_t startmodule = 0;
 
-  while (b < max)
+  while (i < max)
   {
-    //Need to watch overflow of the uint8 here...
-    uint8_t endmodule = (startmodule + maximum_cell_modules_per_packet) - 1;
+    uint16_t endmodule = (startmodule + maximum_cell_modules_per_packet) - 1;
 
     //Limit to number of modules we have configured
     if (endmodule > max)
@@ -709,6 +739,7 @@ void timerEnqueueCallback()
       endmodule = max - 1;
     }
 
+    //Need to watch overflow of the uint8 here...
     prg.sendCellVoltageRequest(startmodule, endmodule);
     prg.sendCellTemperatureRequest(startmodule, endmodule);
 
@@ -718,37 +749,53 @@ void timerEnqueueCallback()
       if (cmi[m].inBypass)
       {
         prg.sendReadBalancePowerRequest(startmodule, endmodule);
+        //We only need 1 reading for whole bank
         break;
       }
     }
 
     //Every 50 loops also ask for bad packet count (saves battery power if we dont ask for this all the time)
-    if (counter % 50 == 0)
+    if (sequence % 50 == 0)
     {
       prg.sendReadBadPacketCounter(startmodule, endmodule);
     }
 
+    //Move to the next bank
     startmodule = endmodule + 1;
-    b += maximum_cell_modules_per_packet;
+    i += maximum_cell_modules_per_packet;
   }
-
-  //It's an unsigned byte, let it overflow to reset
-  counter++;
 }
 
 void connectToWifi()
 {
-  SERIAL_DEBUG.println(F("Connecting to Wi-Fi..."));
-  WiFi.mode(WIFI_STA);
+  if (WiFi.status() != WL_CONNECTED)
+  {
+    //SERIAL_DEBUG.println(F("Configuring Wi-Fi STA..."));
+    WiFi.mode(WIFI_STA);
+
+    char hostname[40];
+
 #if defined(ESP8266)
-  //Serial.printf(" ESP8266 Chip id = %08X\n", ESP.getChipId());
-  wifi_station_set_hostname("diyBMSESP8266");
-  WiFi.hostname("diyBMSESP8266");
+    sprintf(hostname, "DIYBMS-%08X", ESP.getChipId());
+    wifi_station_set_hostname(hostname);
+    WiFi.hostname(hostname);
 #endif
 #if defined(ESP32)
-  WiFi.setHostname("diyBMSESP32");
+    uint32_t chipId = 0;
+    for (int i = 0; i < 17; i = i + 8)
+    {
+      chipId |= ((ESP.getEfuseMac() >> (40 - i)) & 0xff) << i;
+    }
+    sprintf(hostname, "DIYBMS-%08X", chipId);
+    WiFi.setHostname(hostname);
 #endif
-  WiFi.begin(DIYBMSSoftAP::WifiSSID(), DIYBMSSoftAP::WifiPassword());
+    SERIAL_DEBUG.print(F("Hostname: "));
+    SERIAL_DEBUG.print(hostname);
+    SERIAL_DEBUG.println(F("  Connecting to Wi-Fi..."));
+    WiFi.begin(DIYBMSSoftAP::WifiSSID(), DIYBMSSoftAP::WifiPassword());
+  }
+
+  WifiDisconnected = false;
 }
 
 void connectToMqtt()
@@ -956,13 +1003,18 @@ void onWifiDisconnect(WiFiEvent_t event, WiFiEventInfo_t info)
 {
 #endif
   SERIAL_DEBUG.println(F("Disconnected from Wi-Fi."));
+
+  //Indicate to loop() to reconnect, seems to be
+  //ESP issues using Wifi from timers - https://github.com/espressif/arduino-esp32/issues/2686
+  WifiDisconnected = true;
+
   // ensure we don't reconnect to MQTT while reconnecting to Wi-Fi
   mqttReconnectTimer.detach();
   myTimerSendMqttPacket.detach();
   myTimerSendMqttStatus.detach();
   myTimerSendInfluxdbPacket.detach();
 
-  wifiReconnectTimer.once(2, connectToWifi);
+  //wifiReconnectTimer.once(2, connectToWifi);
 }
 
 void onMqttDisconnect(AsyncMqttClientDisconnectReason reason)
@@ -1048,71 +1100,120 @@ void sendMqttStatus()
 
 //Send a few MQTT packets and keep track so we send the next batch on following calls
 uint8_t mqttStartModule = 0;
+uint8_t mqttFrequencyCounter = 0;
 void sendMqttPacket()
 {
-  //Dont send any mqtt about the cells if we have comms error or no connection.
-  if ((!mysettings.mqtt_enabled && !mqttClient.connected()) || receiveProc.HasCommsTimedOut())
-    return;
+#if defined(MQTT_LOGGING)
+  SERIAL_DEBUG.println("sendMqttPacket");
+#endif
 
-  //SERIAL_DEBUG.println("Sending MQTT");
+  if (!mysettings.mqtt_enabled && !mqttClient.connected())
+    return;
 
   char topic[80];
   char jsonbuffer[200];
 
-  uint8_t counter = 0;
-
-  for (uint8_t i = mqttStartModule; i < mysettings.totalNumberOfSeriesModules * mysettings.totalNumberOfBanks; i++)
+  if (mqttFrequencyCounter % 5 == 0)
   {
-
-    //Only send valid module data
-    if (cmi[i].valid)
+    //Publish the outcome of the rules over MQTT, only do this periodically
+    //ideally we would only do this when the rule outcome actually changed, perhaps on back of an event
+    //(output about every 25 seconds)
+    for (uint8_t i = 0; i < RELAY_RULES; i++)
     {
-      uint8_t bank = i / mysettings.totalNumberOfSeriesModules;
-      uint8_t module = i - (bank * mysettings.totalNumberOfSeriesModules);
-
-      StaticJsonDocument<200> doc;
-      doc["voltage"] =  (float)cmi[i].voltagemV / 1000.0;
-      doc["vMax"] =     (float)cmi[i].voltagemVMax/1000.0;
-      doc["vMin"] =     (float)cmi[i].voltagemVMin/1000.0;
-      doc["inttemp"] =  cmi[i].internalTemp;
-      doc["exttemp"] =  cmi[i].externalTemp;
-      doc["bypass"] =   cmi[i].inBypass ? 1 : 0;
-      doc["bypassT"] =  cmi[i].bypassOverTemp ? 1:0;
-      doc["bpc"] =      cmi[i].badPacketCount;
-      doc["PWM"] =      cmi[i].PWMValue;
-      doc["version"] =  cmi[i].BoardVersionNumber;
-      doc["PWMTime"] =  cmi[i].PWMTime;
-      doc["mAh"] =    cmi[i].mAh;
-      serializeJson(doc, jsonbuffer, sizeof(jsonbuffer));
-
-      sprintf(topic, "%s/%d/%d", mysettings.mqtt_topic, bank, module);
-
-      //SERIAL_DEBUG.print("Sending MQTT - ");
-      //SERIAL_DEBUG.println(topic);
-
+      sprintf(topic, "%s/rule/%d", mysettings.mqtt_topic, i);
+      if (rules.rule_outcome[i])
+      {
+        strcpy(jsonbuffer, "1");
+      }
+      else
+      {
+        strcpy(jsonbuffer, "0");
+      }
       mqttClient.publish(topic, 0, false, jsonbuffer);
-      //SERIAL_DEBUG.println(topic);
+
+#if defined(MQTT_LOGGING)
+      SERIAL_DEBUG.print("MQTT - ");
+      SERIAL_DEBUG.print(topic);
+      SERIAL_DEBUG.print('=');
+      SERIAL_DEBUG.println(jsonbuffer);
+#endif
     }
 
-    counter++;
-
-    //After transmitting this many packets over MQTT, store our current state and exit the function.
-    //this prevents flooding the ESP controllers wifi stack and potentially causing reboots/fatal exceptions
-    if (counter == 10)
+    for (uint8_t i = 0; i < RELAY_TOTAL; i++)
     {
-      mqttStartModule = i + 1;
-
-      if (mqttStartModule > mysettings.totalNumberOfSeriesModules * mysettings.totalNumberOfBanks)
+      sprintf(topic, "%s/output/%d", mysettings.mqtt_topic, i);
+      if (previousRelayState[i] == RelayState::RELAY_ON)
       {
-        mqttStartModule = 0;
+        strcpy(jsonbuffer, "1");
       }
+      else
+      {
+        strcpy(jsonbuffer, "0");
+      }
+      mqttClient.publish(topic, 0, false, jsonbuffer);
 
-      return;
+#if defined(MQTT_LOGGING)
+      SERIAL_DEBUG.print("MQTT - ");
+      SERIAL_DEBUG.print(topic);
+      SERIAL_DEBUG.print('=');
+      SERIAL_DEBUG.println(jsonbuffer);
+#endif
     }
   }
 
-  //Completed the loop, start at zero
-  mqttStartModule = 0;
+  mqttFrequencyCounter++;
+
+  //If the BMS is in error, stop sending MQTT packets for the data
+  if (rules.ErrorCode == InternalErrorCode::NoError)
+  {
+    uint8_t counter = 0;
+    for (uint8_t i = mqttStartModule; i < mysettings.totalNumberOfSeriesModules * mysettings.totalNumberOfBanks; i++)
+    {
+      //Only send valid module data
+      if (cmi[i].valid)
+      {
+        uint8_t bank = i / mysettings.totalNumberOfSeriesModules;
+        uint8_t module = i - (bank * mysettings.totalNumberOfSeriesModules);
+
+        StaticJsonDocument<100> doc;
+        doc["voltage"] = (float)cmi[i].voltagemV / 1000.0;
+        doc["inttemp"] = cmi[i].internalTemp;
+        doc["exttemp"] = cmi[i].externalTemp;
+        doc["bypass"] = cmi[i].inBypass ? 1 : 0;
+        serializeJson(doc, jsonbuffer, sizeof(jsonbuffer));
+
+        sprintf(topic, "%s/%d/%d", mysettings.mqtt_topic, bank, module);
+
+        mqttClient.publish(topic, 0, false, jsonbuffer);
+
+#if defined(MQTT_LOGGING)
+        SERIAL_DEBUG.print("MQTT - ");
+        SERIAL_DEBUG.print(topic);
+        SERIAL_DEBUG.print('=');
+        SERIAL_DEBUG.println(jsonbuffer);
+#endif
+      }
+
+      counter++;
+
+      //After transmitting this many packets over MQTT, store our current state and exit the function.
+      //this prevents flooding the ESP controllers wifi stack and potentially causing reboots/fatal exceptions
+      if (counter == 6)
+      {
+        mqttStartModule = i + 1;
+
+        if (mqttStartModule > mysettings.totalNumberOfSeriesModules * mysettings.totalNumberOfBanks)
+        {
+          mqttStartModule = 0;
+        }
+
+        return;
+      }
+    }
+
+    //Completed the loop, start at zero
+    mqttStartModule = 0;
+  }
 }
 
 void onMqttConnect(bool sessionPresent)
@@ -1219,9 +1320,9 @@ void timerLazyCallback()
       prg.sendGetSettingsRequest(module);
       counter++;
 
-      if (counter > 4)
+      if (requestQueue.getRemainingCount() < 6)
       {
-        //Should exit here to avoid flooding the queue, so leave space
+        //Exit here to avoid flooding the queue
         return;
       }
     }
@@ -1257,6 +1358,19 @@ void setup()
   //ESP32 we use the USB serial interface for console/debug messages
   SERIAL_DEBUG.begin(115200, SERIAL_8N1);
   SERIAL_DEBUG.setDebugOutput(true);
+
+  esp_chip_info_t chip_info;
+  esp_chip_info(&chip_info);
+
+  SERIAL_DEBUG.print(F("ESP32 Chip model = "));
+  SERIAL_DEBUG.print(chip_info.model);
+  SERIAL_DEBUG.print(", Rev ");
+  SERIAL_DEBUG.print(chip_info.revision);
+  SERIAL_DEBUG.print(", Cores ");
+  SERIAL_DEBUG.print(chip_info.cores);
+  SERIAL_DEBUG.print(", Features=0x");
+  SERIAL_DEBUG.println(chip_info.features,HEX);
+ 
 #endif
 
   //We generate a unique number which is used in all following JSON requests
@@ -1269,6 +1383,7 @@ void setup()
 #if defined(ESP32)
   hal.ConfigureI2C(TCA6408Interrupt, TCA9534AInterrupt);
 #endif
+
 #if defined(ESP8266)
   hal.ConfigureI2C(ExternalInputInterrupt);
 #endif
@@ -1393,12 +1508,10 @@ void setup()
       mqttClient.setServer(mysettings.mqtt_server, mysettings.mqtt_port);
       mqttClient.setCredentials(mysettings.mqtt_username, mysettings.mqtt_password);
     }
-
-    connectToWifi();
   }
 
   //Ensure we service the cell modules every 4 seconds
-  myTimer.attach(4, timerEnqueueCallback);
+  myTimer.attach(8, timerEnqueueCallback);
 
   //Calculate the total PWM time
   myTimercalculateBalancedEnergy.attach(2, calculateBalancedEnergy);
@@ -1410,8 +1523,11 @@ void setup()
   //and slower than it takes a single module to process a command (about 300ms)
   myTransmitTimer.attach(1, timerTransmitCallback);
 
+  //Service reply queue
+  myReplyTimer.attach(1, serviceReplyQueue);
+
   //This is a lazy timer for low priority tasks
-  myLazyTimer.attach(15, timerLazyCallback);
+  myLazyTimer.attach(20, timerLazyCallback);
 
   //We have just started...
   SetControllerState(ControllerState::Stabilizing);
@@ -1419,7 +1535,13 @@ void setup()
 
 void loop()
 {
+  if (WifiDisconnected)
+  {
+    connectToWifi();
+  }
+
   ArduinoOTA.handle();
+
   //ESP_LOGW("LOOP","LOOP");
 
   // Call update to receive, decode and process incoming packets.
