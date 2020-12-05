@@ -197,7 +197,7 @@ struct CellModuleInfo
   //Total PWM time
   uint32_t PWMTime;
   //bleeded mAh calculated
-  double mAh;
+  float mAh;
 };
 
 // This enum holds the states the controller goes through whilst

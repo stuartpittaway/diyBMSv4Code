@@ -1037,19 +1037,19 @@ void calculateBalancedEnergy()
    for (uint8_t i = 0; i < mysettings.totalNumberOfSeriesModules * mysettings.totalNumberOfBanks; i++)
   {
 
-    //IF data in the module is valid and we are running bypass
-    if (cmi[i].valid && cmi[i].PWMValue)
+    //IF data in the module is valid and we are running bypass. Also need to check so that we got valid loadresistance value. Else we will get NULL values...
+    if (cmi[i].valid && cmi[i].PWMValue && cmi[i].LoadResistance)
     {
-
+      
       // Calculate the total of pwm time used up
-      // Due to that we also stop bypass during voltage check we should retract those ticks. For that is estimated!!
+      // Due to that we also stop bypass during voltage check we should retract those ticks. 
       // Should meassure it up how long time it takes to stop check voltage. 
       // the number 0.63 is an tested estimated number on how far off we are from reality
       cmi[i].PWMTime += cmi[i].PWMValue*2*0.63;
       
       // We got 100 ticks per second due to PWM being 0-100. We got 3600 seconds per hour. This gives us the value of a tick. This is mAh. Note that we use mV as base unit!!
-      float tickValue = (cmi[i].voltagemV / cmi[i].LoadResistance) / 3600 / 100;
-      cmi[i].mAh += (tickValue * (cmi[i].PWMValue*2.0)); // Since we check each 2 seconds we need to double it up. 
+      float tickValue = (cmi[i].voltagemV / cmi[i].LoadResistance ) / 3600 / 100;
+      cmi[i].mAh += (float)(tickValue * (cmi[i].PWMValue*2.0)); // Since we check each 2 seconds we need to double it up. 
 
     }
   }
@@ -1187,7 +1187,7 @@ void sendMqttPacket()
         doc["PWM"] =      cmi[i].PWMValue;
         doc["version"] =  cmi[i].BoardVersionNumber;
         doc["PWMTime"] =  cmi[i].PWMTime;
-        doc["mAh"] =    cmi[i].mAh;
+        doc["mAh"] =    cmi[i].mAh;  
         serializeJson(doc, jsonbuffer, sizeof(jsonbuffer));
 
         sprintf(topic, "%s/%d/%d", mysettings.mqtt_topic, bank, module);
