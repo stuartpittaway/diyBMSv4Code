@@ -1175,11 +1175,19 @@ void sendMqttPacket()
         uint8_t bank = i / mysettings.totalNumberOfSeriesModules;
         uint8_t module = i - (bank * mysettings.totalNumberOfSeriesModules);
 
-        StaticJsonDocument<100> doc;
-        doc["voltage"] = (float)cmi[i].voltagemV / 1000.0;
-        doc["inttemp"] = cmi[i].internalTemp;
-        doc["exttemp"] = cmi[i].externalTemp;
-        doc["bypass"] = cmi[i].inBypass ? 1 : 0;
+        StaticJsonDocument<200> doc;
+        doc["voltage"] =  (float)cmi[i].voltagemV / 1000.0;
+        doc["vMax"] =     (float)cmi[i].voltagemVMax/1000.0;
+        doc["vMin"] =     (float)cmi[i].voltagemVMin/1000.0;
+        doc["inttemp"] =  cmi[i].internalTemp;
+        doc["exttemp"] =  cmi[i].externalTemp;
+        doc["bypass"] =   cmi[i].inBypass ? 1 : 0;
+        doc["bypassT"] =  cmi[i].bypassOverTemp ? 1:0;
+        doc["bpc"] =      cmi[i].badPacketCount;
+        doc["PWM"] =      cmi[i].PWMValue;
+        doc["version"] =  cmi[i].BoardVersionNumber;
+        doc["PWMTime"] =  cmi[i].PWMTime;
+        doc["mAh"] =    cmi[i].mAh;
         serializeJson(doc, jsonbuffer, sizeof(jsonbuffer));
 
         sprintf(topic, "%s/%d/%d", mysettings.mqtt_topic, bank, module);
@@ -1198,7 +1206,7 @@ void sendMqttPacket()
 
       //After transmitting this many packets over MQTT, store our current state and exit the function.
       //this prevents flooding the ESP controllers wifi stack and potentially causing reboots/fatal exceptions
-      if (counter == 6)
+      if (counter == 10)
       {
         mqttStartModule = i + 1;
 
