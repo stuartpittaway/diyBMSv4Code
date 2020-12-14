@@ -1040,8 +1040,6 @@ void sendMqttStatus()
   if (!mysettings.mqtt_enabled && !mqttClient.connected())
     return;
 
-  SERIAL_DEBUG.println("sendMqttStatus");
-
   char topic[80];
   char jsonbuffer[220];
   DynamicJsonDocument doc(220);
