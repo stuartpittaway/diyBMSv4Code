@@ -1043,8 +1043,8 @@ void sendMqttStatus()
   SERIAL_DEBUG.println("sendMqttStatus");
 
   char topic[80];
-  char jsonbuffer[200];
-  DynamicJsonDocument doc(200);
+  char jsonbuffer[220];
+  DynamicJsonDocument doc(220);
   JsonObject root = doc.to<JsonObject>();
 
   root["banks"] = mysettings.totalNumberOfBanks;
@@ -1077,10 +1077,6 @@ void sendMqttStatus()
   SERIAL_DEBUG.print('=');
   SERIAL_DEBUG.println(jsonbuffer);
 #endif
-
-  //Publish the outcome of the rules over MQTT, only do this periodically
-  //ideally we would only do this when the rule outcome actually changed, perhaps on back of an event
-  //(output about every 25 seconds)
 
   //Using Json for below reduced MQTT messages from 14 to 2. Could be combined into same json object too. But even better is status + event driven.
   doc.clear(); // Need to clear the json object for next message
