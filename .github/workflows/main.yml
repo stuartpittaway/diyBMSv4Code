@@ -38,7 +38,7 @@ jobs:
 
     - name: ZIP output for release
       run: |
-        zip --junk-paths release.zip ./ESPController/.pio/build/esp8266_d1minipro/diybms_controller_firmware_espressif8266_esp8266_d1minipro.bin
+        zip --junk-paths release.zip ./ESPController/.pio/build/esp8266_d1minipro/firmware.bin
         zip --junk-paths release.zip ./ATTINYCellModule/.pio/build/attiny841_V400/*.hex
         zip --junk-paths release.zip ./ATTINYCellModule/.pio/build/attiny841_V410/*.hex
         zip --junk-paths release.zip ./ATTINYCellModule/.pio/build/attiny841_V420/*.hex
@@ -47,13 +47,10 @@ jobs:
       
     - name: Build File System Image for ESP8266
       run: pio run --project-dir=./ESPController --target buildfs --environment esp8266_d1minipro
-      
-    - name: Build File System Image for esp32
-      run: pio run --project-dir=./ESPController --target buildfs --environment esp32-devkitc
-      
-    - name: ZIP output for release
+
+    - name: ZIP output for release (file system images)
       run: |
-        zip --junk-paths release.zip ./ESPController/.pio/build/esp8266_d1minipro/diybms_controller_filesystemimage_espressif8266_esp8266_d1minipro.bin
+        zip --junk-paths release.zip ./ESPController/.pio/build/esp8266_d1minipro/spiffs.bin
 
     - name: Publish Compile Artifacts
       uses: actions/upload-artifact@v2
