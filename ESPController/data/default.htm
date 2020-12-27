@@ -48,6 +48,10 @@
         <div id="sent" class="stat"><span class="x t">Packets sent:</span><span class="x v"></span></div>
         <div id="received" class="stat"><span class="x t">Packets rec'd:</span><span class="x v"></span></div>
         <div id="roundtrip" class="stat"><span class="x t">Roundtrip (ms):</span><span class="x v"></span></div>
+        <div id="relay1" class="stat"><span class="x t">Relay 1:</span><span class="x v"></span></div>
+        <div id="relay2" class="stat"><span class="x t">Relay 2:</span><span class="x v"></span></div>
+        <div id="relay3" class="stat"><span class="x t">Relay 3:</span><span class="x v"></span></div>
+        <div id="relay4" class="stat"><span class="x t">Relay 4:</span><span class="x v"></span></div>
     </div>
 
 
@@ -60,7 +64,7 @@
         <h1>About</h1>
         <div class="region">
             <h2>Source Code</h2>
-            <a href="https://github.com/stuartpittaway/diyBMSv4" rel="noreferrer" 
+            <a href="https://github.com/stuartpittaway/diyBMSv4" rel="noreferrer"
                 target="_blank">https://github.com/stuartpittaway/diyBMSv4</a>
         </div>
         <div class="region">
@@ -81,7 +85,7 @@
             <h2>License</h2>
             <p>This work is licensed under a Creative Commons Attribution-NonCommercial-ShareAlike 2.0 UK: England &
                 Wales License.</p>
-            <a href="https://creativecommons.org/licenses/by-nc-sa/2.0/uk/" rel="noreferrer" 
+            <a href="https://creativecommons.org/licenses/by-nc-sa/2.0/uk/" rel="noreferrer"
                 target="_blank">https://creativecommons.org/licenses/by-nc-sa/2.0/uk/</a>
         </div>
         <div class="region">
@@ -527,7 +531,7 @@
         $(function () {
 
             $("#loading").show();
-            
+
             //Populate all the setting rules with relay select lists
             $.each($(".settings table tbody tr td:empty"), function (index, value) {
                 $.each([1, 2, 3, 4], function (index1, relay) {
@@ -777,7 +781,7 @@
                 beforeSend: function (xhr, settings) { settings.data += '&xss=' + XSS_KEY; }
             });
 
-            //$(document).ajaxStart(function(){ }); 
+            //$(document).ajaxStart(function(){ });
             //$(document).ajaxStop(function(){ });
 
             $("#homePage").show();

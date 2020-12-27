@@ -5,7 +5,7 @@
 #include <Arduino.h>
 #if defined(ESP8266)
 //https://github.com/esp8266/Arduino
-#include <ESP8266WiFi.h>          
+#include <ESP8266WiFi.h>
 #include <ESPAsyncTCP.h>
 #else
 #include <WiFi.h>
@@ -64,6 +64,7 @@ extern PacketRequestGenerator prg;
 extern PacketReceiveProcessor receiveProc;
 extern diybms_eeprom_settings mysettings;
 extern uint16_t ConfigHasChanged;
+extern uint8_t relay[RELAY_TOTAL];
 extern bool rule_outcome[RELAY_RULES];
 extern bool PCF8574Enabled;
 extern ControllerState ControlState;

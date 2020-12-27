@@ -588,7 +588,7 @@ void DIYBMSServer::rules(AsyncWebServerRequest *request)
 
   root["PCF8574"] = PCF8574Enabled;
   root["ControlState"] = ControlState;
-  
+
 
   JsonArray defaultArray = root.createNestedArray("relaydefault");
   for (uint8_t relay = 0; relay < RELAY_TOTAL; relay++)
@@ -810,6 +810,11 @@ void DIYBMSServer::monitor(AsyncWebServerRequest *request)
   monitor["badcrc"] = receiveProc.totalCRCErrors;
   monitor["ignored"] = receiveProc.totalNotProcessedErrors;
   monitor["roundtrip"] = receiveProc.packetTimerMillisecond;
+
+  monitor["relay1"] = relay[0] ? "Off" : "On";
+  monitor["relay2"] = relay[1] ? "Off" : "On";
+  monitor["relay3"] = relay[2] ? "Off" : "On";
+  monitor["relay4"] = relay[3] ? "Off" : "On";
 
   JsonArray bankArray = root.createNestedArray("bank");
 

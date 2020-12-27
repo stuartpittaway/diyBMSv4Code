@@ -80,6 +80,8 @@ uint8_t packetType = 0;
 uint8_t previousRelayState[RELAY_TOTAL];
 bool previousRelayPulse[RELAY_TOTAL];
 
+uint8_t relay[RELAY_TOTAL];
+
 #if defined(ESP8266)
 bool NTPsyncEventTriggered = false; // True if a time even has been triggered
 NTPSyncEvent_t ntpEvent;            // Last triggered event
@@ -388,7 +390,7 @@ void ProcessRules()
     SetControllerState(ControllerState::Running);
   }
 
-  if (ControlState==ControllerState::Running && CountOfBanksWithNoModules>0) { 
+  if (ControlState==ControllerState::Running && CountOfBanksWithNoModules>0) {
     //TODO: Add new rule to check for this issue.
     SERIAL_DEBUG.println("ZERO VOLT MODULE READING - ERROR!");
   }
@@ -490,7 +492,7 @@ void ProcessRules()
     rule_outcome[RULE_IndividualcellundertemperatureExternal] = false;
   }
 
-  
+
 
   //Test pack voltages
   if (highestPackVoltage > mysettings.rulevalue[RULE_PackOverVoltage] && rule_outcome[RULE_PackOverVoltage] == false)
@@ -555,8 +557,6 @@ void timerProcessRules()
   }
   SERIAL_DEBUG.print("=");
 #endif
-
-  uint8_t relay[RELAY_TOTAL];
 
   //Set defaults based on configuration
   for (int8_t y = 0; y < RELAY_TOTAL; y++)
@@ -914,7 +914,7 @@ void sendMqttPacket()
         if (mqttStartBank>mysettings.totalNumberOfBanks-1) {
           mqttStartBank=0;
         }
-        
+
         return;
       }
     }
@@ -1004,7 +1004,7 @@ void LoadConfiguration()
   for (size_t x = 0; x < RELAY_TOTAL; x++)
   {
     mysettings.relaytype[x]=RELAY_STANDARD;
-  }  
+  }
 }
 
 void ConfigureI2C()
@@ -1075,13 +1075,13 @@ void timerLazyCallback()
     for (uint8_t module = 0; module < numberOfModules[bank]; module++)
     {
       if (!cmi[bank][module].settingsCached)
-      {      
+      {
         prg.sendGetSettingsRequest(bank, module);
 
         if (prg.QueueLength()>8) {
           //We really should exit here to avoid flooding the queue
           return;
-        }       
+        }
       }
     }
   }

@@ -120,6 +120,11 @@ function queryBMS() {
         if (jsondata.monitor.received == 0) { $("#received").hide(); } else { $("#received .v").html(jsondata.monitor.received); $("#received").show(); }
         if (jsondata.monitor.roundtrip == 0) { $("#roundtrip").hide(); } else { $("#roundtrip .v").html(jsondata.monitor.roundtrip); $("#roundtrip").show(); }
 
+        if (jsondata.monitor.relay1 == 0) { $("#relay1").hide(); } else { $("#relay1 .v").html(jsondata.monitor.relay1); $("#relay1").show(); }
+        if (jsondata.monitor.relay2 == 0) { $("#relay2").hide(); } else { $("#relay2 .v").html(jsondata.monitor.relay2); $("#relay2").show(); }
+        if (jsondata.monitor.relay3 == 0) { $("#relay3").hide(); } else { $("#relay3 .v").html(jsondata.monitor.relay3); $("#relay3").show(); }
+        if (jsondata.monitor.relay4 == 0) { $("#relay4").hide(); } else { $("#relay4 .v").html(jsondata.monitor.relay4); $("#relay4").show(); }
+
         for (var bankNumber = 0; bankNumber < 4; bankNumber++) {
             if (voltage[bankNumber] > 0) {
                 $("#voltage" + (bankNumber + 1) + " .v").html(voltage[bankNumber].toFixed(2) + "V");
@@ -508,4 +513,3 @@ function queryBMS() {
 }
 
 $(window).on('resize', function () { if (g1 != null && g1 != undefined && $('#homePage').is(':visible')) { g1.resize(); } });
-
