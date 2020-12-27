@@ -99,6 +99,7 @@ uint16_t TotalNumberOfCells() { return mysettings.totalNumberOfBanks * mysetting
 bool server_running = false;
 RelayState previousRelayState[RELAY_TOTAL];
 bool previousRelayPulse[RELAY_TOTAL];
+RelayState relay[RELAY_TOTAL];
 
 volatile enumInputState InputState[INPUTS_TOTAL];
 
@@ -659,8 +660,6 @@ void timerProcessRules()
   }
   SERIAL_DEBUG.print("=");
 #endif
-
-  RelayState relay[RELAY_TOTAL];
 
   //Set defaults based on configuration
   for (int8_t y = 0; y < RELAY_TOTAL; y++)

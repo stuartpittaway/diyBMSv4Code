@@ -912,6 +912,11 @@ void DIYBMSServer::monitor2(AsyncWebServerRequest *request)
     doc["roundtrip"] = receiveProc.packetTimerMillisecond;
     doc["oos"] = receiveProc.totalOutofSequenceErrors;
 
+    doc["relay1"] = (relay[0] == RELAY_ON) ? "On" : (relay[0] == RELAY_OFF) ? "Off" : "X";
+    doc["relay2"] = (relay[1] == RELAY_ON) ? "On" : (relay[1] == RELAY_OFF) ? "Off" : "X";
+    doc["relay3"] = (relay[2] == RELAY_ON) ? "On" : (relay[2] == RELAY_OFF) ? "Off" : "X";
+    doc["relay4"] = (relay[3] == RELAY_ON) ? "On" : (relay[3] == RELAY_OFF) ? "Off" : "X";
+
     uint8_t totalModules = mysettings.totalNumberOfBanks * mysettings.totalNumberOfSeriesModules;
 
     JsonArray voltages = doc.createNestedArray("voltages");

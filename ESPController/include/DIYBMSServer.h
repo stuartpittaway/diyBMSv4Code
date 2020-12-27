@@ -74,6 +74,7 @@ extern diybms_eeprom_settings mysettings;
 extern uint16_t ConfigHasChanged;
 extern Rules rules;
 extern ControllerState ControlState;
+extern RelayState relay[RELAY_TOTAL];
 
 extern bool OutputsEnabled;
 extern bool InputsEnabled;

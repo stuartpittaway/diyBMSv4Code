@@ -134,7 +134,7 @@ function queryBMS() {
                 bank.push(bankNumber);
                 cells.push(i);
 
-                
+
                 cellsInBank++;
                 if (cellsInBank == jsondata.seriesmodules) {
                     cellsInBank = 0;
@@ -159,6 +159,11 @@ function queryBMS() {
             if (jsondata.received == 0) { $("#received").hide(); } else { $("#received .v").html(jsondata.received); $("#received").show(); }
             if (jsondata.roundtrip == 0) { $("#roundtrip").hide(); } else { $("#roundtrip .v").html(jsondata.roundtrip); $("#roundtrip").show(); }
             if (jsondata.oos == 0) { $("#oos").hide(); } else { $("#oos .v").html(jsondata.oos); $("#oos").show(); }
+
+            if (jsondata.relay1 == 0) { $("#relay1").hide(); } else { $("#relay1 .v").html(jsondata.relay1); $("#relay1").show(); }
+            if (jsondata.relay2 == 0) { $("#relay2").hide(); } else { $("#relay2 .v").html(jsondata.relay2); $("#relay2").show(); }
+            if (jsondata.relay3 == 0) { $("#relay3").hide(); } else { $("#relay3 .v").html(jsondata.relay3); $("#relay3").show(); }
+            if (jsondata.relay4 == 0) { $("#relay4").hide(); } else { $("#relay4 .v").html(jsondata.relay4); $("#relay4").show(); }
         }
 
         if (jsondata.bankv) {
@@ -248,11 +253,11 @@ function queryBMS() {
                 //$(columns[10]).html(balcurrent[index]);
             });
 
-            //As the module page is open, we refresh the last 3 columns using seperate JSON web service to keep the monitor2.json 
+            //As the module page is open, we refresh the last 3 columns using seperate JSON web service to keep the monitor2.json
             //packets as small as possible
 
 
-            $.getJSON("monitor3.json", function (jsondata) {              
+            $.getJSON("monitor3.json", function (jsondata) {
                 var tbody = $("#modulesRows");
                 var rows = $(tbody).find("tr");
                 $.each(cells, function (index, value) {
@@ -963,7 +968,7 @@ $(function () {
         beforeSend: function (xhr, settings) { settings.data += '&xss=' + XSS_KEY; }
     });
 
-    //$(document).ajaxStart(function(){ }); 
+    //$(document).ajaxStart(function(){ });
     //$(document).ajaxStop(function(){ });
 
     $("#homePage").show();
