@@ -40,7 +40,7 @@ private:
     static void monitor3(AsyncWebServerRequest *request);
     //static void monitor(AsyncWebServerRequest *request);
     static void modules(AsyncWebServerRequest *request);
-
+    static void modbus(AsyncWebServerRequest *request);
     static void integration(AsyncWebServerRequest *request);
     static void identifyModule(AsyncWebServerRequest *request);
     static void GetRules(AsyncWebServerRequest *request);

@@ -82,6 +82,7 @@ function queryBMS() {
         var tempint = [];
         var tempext = [];
         var pwm = [];
+        var modbusval = [];
 
 
         var minVoltage = DEFAULT_GRAPH_MIN_VOLTAGE;
@@ -134,7 +135,7 @@ function queryBMS() {
                 bank.push(bankNumber);
                 cells.push(i);
 
-                
+
                 cellsInBank++;
                 if (cellsInBank == jsondata.seriesmodules) {
                     cellsInBank = 0;
@@ -177,6 +178,14 @@ function queryBMS() {
             }
         }
 
+/*
+        if (jsondata.modbus) {
+            for (var device = 0; device < jsondata.modbus.length; device++) {
+                $("#val" + device + " .v").html(parseFloat(jsondata.modbus[device]).toFixed(2));
+                $("#val" + device).show();
+            }
+        }
+*/
         //Not currently supported
         if (jsondata.current) {
             if (jsondata.current[0] == null) {
@@ -248,11 +257,11 @@ function queryBMS() {
                 //$(columns[10]).html(balcurrent[index]);
             });
 
-            //As the module page is open, we refresh the last 3 columns using seperate JSON web service to keep the monitor2.json 
+            //As the module page is open, we refresh the last 3 columns using seperate JSON web service to keep the monitor2.json
             //packets as small as possible
 
 
-            $.getJSON("monitor3.json", function (jsondata) {              
+            $.getJSON("monitor3.json", function (jsondata) {
                 var tbody = $("#modulesRows");
                 var rows = $(tbody).find("tr");
                 $.each(cells, function (index, value) {
@@ -262,6 +271,32 @@ function queryBMS() {
                     $(columns[10]).html(jsondata.balcurrent[index]);
                 });
             });
+        }
+
+
+        if ($('#modbusPage').is(':visible')) {
+            //The modbus page is visible
+            var tbody = $("#modbusRows");
+
+/*
+            if ($('#modbusRows tr').length != MODBUS_NUM) {
+//                $("#settingConfig").hide();
+
+                //Add rows if they dont exist (or incorrect amount)
+                $(tbody).find("tr").remove();
+
+                $.each(modbusData, function (index, value) {
+                    $(tbody).append("<tr><td>" + index + "</td><td>" + value + "</td><td></td></tr>")
+                });
+            }
+
+            var rows = $(tbody).find("tr");
+
+            $.each(cells, function (index, value) {
+                var columns = $(rows[index]).find("td");
+                $(columns[2]).html(modbusValue[index].value.toFixed(2));
+            });
+*/
         }
 
 
@@ -754,6 +789,33 @@ $(function () {
         return true;
     });
 
+    $("#modbus").click(function () {
+        $(".header-right a").removeClass("active");
+        $(this).addClass("active");
+        $(".page").hide();
+        $("#modbusPage").show();
+
+/*
+        //Remove existing table
+        $("#modbusRows").find("tr").remove();
+
+        $.getJSON("modbus.json",
+            function (data) {
+
+                $("#modbusEnergy").val(data.modbus.energy);
+                $("#modbusPower").val(data.modbus.power);
+                $("#modbusVoltage").val(data.modbus.voltage);
+                $("#modbusCurrent").val(data.modbus.current);
+                $("#modbusFrequency").val(data.modbus.frequency);
+
+                $("#modbusForm").show();
+            }).fail(function () { }
+            );
+*/
+        return true;
+    });
+
+
     $("#settings").click(function () {
         $(".header-right a").removeClass("active");
         $(this).addClass("active");
@@ -963,7 +1025,7 @@ $(function () {
         beforeSend: function (xhr, settings) { settings.data += '&xss=' + XSS_KEY; }
     });
 
-    //$(document).ajaxStart(function(){ }); 
+    //$(document).ajaxStart(function(){ });
     //$(document).ajaxStop(function(){ });
 
     $("#homePage").show();

@@ -115,6 +115,10 @@ HAL_ESP8266 hal;
 HAL_ESP32 hal;
 #endif
 
+// #include <SDM_Config_User.h>
+// #include <SDM.h>
+#include "Modbus.h"
+
 #include "Rules.h"
 
 volatile bool emergencyStop = false;
@@ -1641,6 +1645,7 @@ void init_tft_display()
   hal.TFTScreenBacklight(true);
 }
 
+
 void setup()
 {
   WiFi.mode(WIFI_OFF);
@@ -1877,6 +1882,7 @@ void loop()
   //delay(10);
   //ESP_LOGW("LOOP","LOOP");
 
+#ifdef TOUCH_SCREEN
   if (touchscreen.tirqTouched()) {
     if (touchscreen.touched()) {
       TS_Point p = touchscreen.getPoint();
@@ -1889,6 +1895,7 @@ void loop()
       SERIAL_DEBUG.println();
     }
   }
+#endif
 
   if (WifiDisconnected && ControlState != ControllerState::ConfigurationSoftAP)
   {
@@ -1926,6 +1933,8 @@ void loop()
       ESP.restart();
     }
   }
+
+ReadModbus();
 
 #if defined(ESP8266)
   if (NTPsyncEventTriggered)

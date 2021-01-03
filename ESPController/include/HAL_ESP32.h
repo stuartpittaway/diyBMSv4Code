@@ -1,5 +1,5 @@
 /*
-THIS IS THE HARDWARE ABSTRACT LAYER 
+THIS IS THE HARDWARE ABSTRACT LAYER
 FOR DIYBMS ESP32 CONTROLLER PCB - THIS IS THE LARGER
 PCB WITH RS485/CANBUS/TFT DISPLAY
 */
@@ -25,17 +25,19 @@ PCB WITH RS485/CANBUS/TFT DISPLAY
 #define TCA9534APWR_OUTPUT 0x01
 #define TCA9534APWR_POLARITY_INVERSION 0x02
 #define TCA9534APWR_CONFIGURATION 0x03
-#define TCA9534APWR_INPUTMASK B11100000
+//#define TCA9534APWR_INPUTMASK B11100000
+#define TCA9534APWR_INPUTMASK B00000000
 
 //GPIO39 (input only pin)
 #define TCA6408_INTERRUPT_PIN GPIO_NUM_39
-#define TCA6408_ADDRESS 0x20
+//#define TCA6408_ADDRESS 0x20
+#define TCA6408_ADDRESS 0x38
 #define TCA6408_INPUT 0x00
 #define TCA6408_OUTPUT 0x01
 #define TCA6408_POLARITY_INVERSION 0x02
 #define TCA6408_CONFIGURATION 0x03
-
-#define TCA6408_INPUTMASK B00000011
+//#define TCA6408_INPUTMASK B00000011
+#define TCA6408_INPUTMASK B00000000
 
 // Derived classes
 class HAL_ESP32
@@ -45,7 +47,7 @@ public:
     void SetOutputState(uint8_t outputId, RelayState state);
     uint8_t ReadTCA6408InputRegisters();
     uint8_t ReadTCA9534InputRegisters();
-    bool OutputsEnabled = false;
+    bool OutputsEnabled = true;
     bool InputsEnabled = false;
     void Led(uint8_t bits);
     void ConfigurePins(void (*WiFiPasswordResetInterrput)(void));
