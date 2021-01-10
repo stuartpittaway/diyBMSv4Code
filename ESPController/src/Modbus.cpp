@@ -1,13 +1,12 @@
 #include <Arduino.h>
 
 #include "defines.h"
-
+#include "HAL_ESP32.h"
 #include <SDM.h>
 #include "Modbus.h"
 
-#define SERIAL_MODBUS Serial1
-
-SDM sdm(SERIAL_MODBUS, 9600, NOT_A_PIN, SERIAL_8N1, 16, 17);                             //esp32 default pins for Serial1 => RX pin 16, TX pin 17
+//SDM sdm(SERIAL_RS485, 9600, NOT_A_PIN, SERIAL_8N1, 16, 17);    //esp32 default pins for Serial1 => RX pin 16, TX pin 17
+SDM sdm(SERIAL_RS485, 9600, NOT_A_PIN, SERIAL_8N1, RS485_RX, RS485_TX);      // pins for DIYBMS => RX pin 21, TX pin 22
 
 
 ModbusInfo ModBus[MODBUS_NUM];
@@ -35,7 +34,7 @@ void setModbus(int dev, uint8_t addr, uint32_t min, uint32_t max, uint16_t reg, 
   setModbusUnit(dev, unit);
   setModbusDesc(dev, desc);
 
-  SERIAL_DEBUG.printf("%d %s %s %s\n", dev, (char*) ModBus[dev].name, (char*) ModBus[dev].unit, (char*) ModBus[dev].desc);
+//  SERIAL_DEBUG.printf("%d %s %s %s\n", dev, (char*) ModBus[dev].name, (char*) ModBus[dev].unit, (char*) ModBus[dev].desc);
   dev++;
 }
 
