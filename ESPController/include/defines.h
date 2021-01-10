@@ -13,6 +13,7 @@
 //Data uses Rx2/TX2 and debug logs go to serial0 - USB
 #define SERIAL_DATA Serial2
 #define SERIAL_DEBUG Serial
+#define SERIAL_RS485 Serial1
 
 //Total number of cells a single controler can handle (memory limitation)
 #define maximum_controller_cell_modules 250
@@ -81,8 +82,8 @@ enum RelayType : uint8_t
 //Number of relays on board (4)
 #define RELAY_TOTAL 4
 
-//5 inputs on board
-#define INPUTS_TOTAL 5
+//7 inputs on board
+#define INPUTS_TOTAL 7
 
 #define SHOW_TIME_PERIOD 5000
 #define NTP_TIMEOUT 1500
