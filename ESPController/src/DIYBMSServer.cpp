@@ -808,37 +808,156 @@ void DIYBMSServer::modules(AsyncWebServerRequest *request)
   }
 }
 
+void DIYBMSServer::modbusVal(AsyncWebServerRequest *request)
+{
+
+  AsyncResponseStream *response = request->beginResponseStream("application/json");
+
+  DynamicJsonDocument doc(1024);
+  JsonObject root = doc.to<JsonObject>();
+
+  JsonArray val  = root.createNestedArray("val");
+  JsonArray last  = root.createNestedArray("last");
+
+  for (int i=0; i<MODBUS_NUM; i++) {
+    val.add(ModBusVal[i].val);
+    last.add((float) ModBusVal[i].last/1000.0);
+  }
+
+  serializeJson(doc, *response);
+  request->send(response);
+
+}
+
 void DIYBMSServer::modbus(AsyncWebServerRequest *request)
 {
-  if (request->hasParam("m", false))
-  {
-    AsyncWebParameter *modbusid = request->getParam("m", false);
-    uint8_t m = modbusid->value().toInt();
 
-    if (m > MODBUS_NUM)
-    {
-      request->send(500, "text/plain", "Wrong Modbus device");
-      return;
+  AsyncResponseStream *response = request->beginResponseStream("application/json");
+
+  DynamicJsonDocument doc(4096);
+  JsonObject root = doc.to<JsonObject>();
+
+/*
+  JsonArray addr = root.createNestedArray("addr");
+  JsonArray reg  = root.createNestedArray("reg");
+  JsonArray name = root.createNestedArray("name");
+  JsonArray unit = root.createNestedArray("unit");
+  JsonArray desc = root.createNestedArray("desc");
+
+  for (int i=0; i<MODBUS_NUM; i++) {
+
+    addr.add(ModBus[i].addr);
+    reg.add(ModBus[i].reg);
+    name.add(ModBus[i].name);
+    unit.add(ModBus[i].unit);
+    desc.add(ModBus[i].desc);
+  }
+*/
+
+  JsonArray modbus = root.createNestedArray("modbus");
+
+  const int capacity=JSON_OBJECT_SIZE(100);
+  StaticJsonDocument<capacity> obj;
+
+  for (int i=0; i<MODBUS_NUM; i++) {
+
+    obj["dev"]  = i;
+    obj["addr"] = ModBus[i].addr;
+    obj["reg"]  = ModBus[i].reg;
+    obj["min"] = ModBus[i].min;
+    obj["max"] = ModBus[i].max;
+    obj["rule"] = ModBus[i].rule ? "X" : "";
+    obj["mqtt"] = ModBus[i].mqtt ? "X" : "";
+    obj["name"] = (char*) ModBus[i].name;
+    obj["unit"] = (char*) ModBus[i].unit;
+    obj["desc"] = (char*) ModBus[i].desc;
+
+    modbus.add(obj);
+
+  }
+
+  serializeJson(doc, *response);
+  request->send(response);
+}
+
+void DIYBMSServer::saveModbus(AsyncWebServerRequest *request)
+{
+  if (!validateXSS(request))
+    return;
+
+    int args = request->args();
+    for(int i=0;i<args;i++){
+      SERIAL_DEBUG.printf("ARG[%s]: %s\n", request->argName(i).c_str(), request->arg(i).c_str());
     }
 
-    AsyncResponseStream *response = request->beginResponseStream("application/json");
 
-    DynamicJsonDocument doc(2048);
-    JsonObject root = doc.to<JsonObject>();
-    JsonObject modbus = root.createNestedObject("modbus");
+  if (request->hasParam("dev", true))
+  {
+    AsyncWebParameter *device = request->getParam("dev", true);
+    //Will this overflow?
+    uint8_t d = device->value().toInt();
 
-    modbus["id"]   = m;
-    modbus["addr"] = ModBus[m].addr;
-    modbus["reg"]  = ModBus[m].reg;
-    modbus["name"] = ModBus[m].name;
-    modbus["desc"] = ModBus[m].desc;
-    modbus["val"]  = ModBus[m].val;
-    modbus["unit"] = ModBus[m].unit;
+    if (d >= MODBUS_NUM)
+    {
+      request->send(500, "text/plain", "Wrong parameters");
+    }
+    else
+    {
 
-    serializeJson(doc, *response);
-    request->send(response);
+      if (request->hasParam("addr", true))
+      {
+        AsyncWebParameter *p1 = request->getParam("addr", true);
+        ModBus[d].addr  = p1->value().toInt();
+      }
+      if (request->hasParam("reg", true))
+      {
+        AsyncWebParameter *p1 = request->getParam("reg", true);
+        ModBus[d].reg  = p1->value().toInt();
+      }
+      if (request->hasParam("min", true))
+      {
+        AsyncWebParameter *p1 = request->getParam("min", true);
+        ModBus[d].min  = p1->value().toInt();
+      }
+      if (request->hasParam("max", true))
+      {
+        AsyncWebParameter *p1 = request->getParam("max", true);
+        ModBus[d].max  = p1->value().toInt();
+      }
+
+      if (request->hasParam("name", true))
+      {
+        AsyncWebParameter *p1 = request->getParam("name", true);
+        strncpy(ModBus[d].name, p1->value().c_str(), MODBUS_NAME_LEN);
+      }
+      if (request->hasParam("unit", true))
+      {
+        AsyncWebParameter *p1 = request->getParam("unit", true);
+        strncpy(ModBus[d].unit, p1->value().c_str(), MODBUS_UNIT_LEN);
+      }
+      if (request->hasParam("desc", true))
+      {
+        AsyncWebParameter *p1 = request->getParam("desc", true);
+        strncpy(ModBus[d].desc, p1->value().c_str(), MODBUS_DESC_LEN);
+      }
+
+      ModBus[d].rule  = request->hasParam("rule", true);
+      SERIAL_DEBUG.printf("Rule %d\n", ModBus[d].rule);
+      ModBus[d].mqtt  = request->hasParam("mqtt", true);
+      SERIAL_DEBUG.printf("MQTT %d\n", ModBus[d].mqtt);
+
+//      prg.sendSaveSetting(m, BypassThresholdmV, BypassOverTempShutdown, Calibration);
+
+      SendSuccess(request);
+    }
+  }
+  else
+  {
+    request->send(500, "text/plain", "Missing parameters");
   }
 }
+
+
 
 /*
 Restart controller from web interface
@@ -1241,10 +1360,14 @@ void DIYBMSServer::StartServer(AsyncWebServer *webserver)
   _myserver->on("/monitor3.json", HTTP_GET, DIYBMSServer::monitor3);
   _myserver->on("/integration.json", HTTP_GET, DIYBMSServer::integration);
   _myserver->on("/modules.json", HTTP_GET, DIYBMSServer::modules);
-  _myserver->on("/modbus.json", HTTP_GET, DIYBMSServer::modbus);
   _myserver->on("/identifyModule.json", HTTP_GET, DIYBMSServer::identifyModule);
   _myserver->on("/settings.json", HTTP_GET, DIYBMSServer::settings);
   _myserver->on("/rules.json", HTTP_GET, DIYBMSServer::GetRules);
+
+  _myserver->on("/modbus.json", HTTP_GET, DIYBMSServer::modbus);
+  _myserver->on("/modbusVal.json", HTTP_GET, DIYBMSServer::modbusVal);
+
+  _myserver->on("/savemodbus.json", HTTP_POST, DIYBMSServer::saveModbus);
 
   //POST method endpoints
   _myserver->on("/savesetting.json", HTTP_POST, DIYBMSServer::saveSetting);

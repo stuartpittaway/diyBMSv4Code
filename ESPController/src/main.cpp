@@ -115,8 +115,6 @@ HAL_ESP8266 hal;
 HAL_ESP32 hal;
 #endif
 
-// #include <SDM_Config_User.h>
-// #include <SDM.h>
 #include "Modbus.h"
 
 #include "Rules.h"
@@ -1733,6 +1731,8 @@ void setup()
   }
 
   resetAllRules();
+
+  InitModbus();
 
 #if defined(ESP32)
   //Receive is IO2 which means the RX1 plug must be disconnected for programming to work!
