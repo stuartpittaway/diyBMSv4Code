@@ -333,7 +333,8 @@ void loop()
 
   hardware.ReferenceVoltageOff();
 
-  uint8_t temp = PP.InternalTemperature() & 0xFF;
+  //We should probably check for invalid InternalTemperature ranges here and throw error (shorted or unconnecter thermistor for example)
+  int16_t internal_temperature = PP.InternalTemperature();
 
   if (temp>DIYBMS_MODULE_SafetyTemperatureCutoff) {
     //Force shut down if temperature is too high
