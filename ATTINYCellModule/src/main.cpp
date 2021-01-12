@@ -336,7 +336,7 @@ void loop()
   //We should probably check for invalid InternalTemperature ranges here and throw error (shorted or unconnecter thermistor for example)
   int16_t internal_temperature = PP.InternalTemperature();
 
-  if (temp>DIYBMS_MODULE_SafetyTemperatureCutoff) {
+  if (internal_temperature>DIYBMS_MODULE_SafetyTemperatureCutoff) {
     //Force shut down if temperature is too high
     //although this does run the risk that the voltage on the cell will go high
     //but the BMS controller should shut off the charger in this situation
@@ -345,7 +345,7 @@ void loop()
 
 
   //Only enter bypass if the board temperature is below safety
-  if (PP.BypassCheck() && temp<DIYBMS_MODULE_SafetyTemperatureCutoff)
+  if (PP.BypassCheck() && internal_temperature<DIYBMS_MODULE_SafetyTemperatureCutoff)
   {
     //Our cell voltage is OVER the voltage setpoint limit, start draining cell using bypass resistor
 
@@ -366,7 +366,7 @@ void loop()
 
   if (PP.bypassCountDown > 0)
   {
-    if (temp < (myConfig.BypassTemperatureSetPoint - 10))
+    if (internal_temperature < (myConfig.BypassTemperatureSetPoint - 10))
     {
       //Full power if we are nowhere near the setpoint (more than 10 degrees C away)
       hardware.StopTimer2();
@@ -387,7 +387,7 @@ void loop()
       }
 
       //Compare the real temperature against max setpoint, we want the PID to keep at this temperature
-      PP.PWMValue = myPID.step(myConfig.BypassTemperatureSetPoint, temp);
+      PP.PWMValue = myPID.step(myConfig.BypassTemperatureSetPoint, internal_temperature);
 
       //Scale PWM up to 0-10000
       hardware.SetTimer2Value(PP.PWMValue * 100);
