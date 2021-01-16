@@ -95,10 +95,11 @@ function configureModbus(button, device, attempts) {
         $("#name").val(data.modbus[device].name);
         $("#unit").val(data.modbus[device].unit);
         $("#desc").val(data.modbus[device].desc);
-        $("#min").val(data.modbus[device].min);
-        $("#max").val(data.modbus[device].max);
+        $("#readInt").val(data.modbus[device].readInt);
+        $("#sendInt").val(data.modbus[device].sendInt);
         $("#rule").prop("checked", data.modbus[device].rule);
         $("#mqtt").prop("checked", data.modbus[device].mqtt);
+        $("#influx").prop("checked", data.modbus[device].influx);
         $("#modbusConfig").show();  //settingsConfig
         $('#loading').hide();
     }).fail(function () {
@@ -834,7 +835,8 @@ $(function () {
                     + value.unit + "</td><td>"
                     + value.desc + "</td><td>"
                     + value.rule + "</td><td>"
-                    + value.mqtt + "</td>"
+                    + value.mqtt + "</td><td>"
+                    + value.influx + "</td>"
                     + "<td><button type='button' onclick='return configureModbus(this," + index + ",10);'>Configure</button></td>"
                     //                  + "<td><button type='button' onclick='return deleteModbus(this," + index + ",10);'>Delete</button></td></tr>");
                     + "</tr>");

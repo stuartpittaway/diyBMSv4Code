@@ -1,0 +1,8 @@
+{"modbus":[
+    {"dev":0,"addr":31,"reg":342,"readInt": 60,"sendInt":3600,"name":"BAT_IN_E", "unit":"kWh","desc":"Powersupply Energy", "rule":true, "mqtt":false},
+    {"dev":1,"addr":31,"reg": 12,"readInt": 10,"sendInt":3600,"name":"BAT_IN_P", "unit":"W",  "desc":"Powersupply Power",  "rule":false, "mqtt":true},
+    {"dev":2,"addr":31,"reg":  0,"readInt": 10,"sendInt":3600,"name":"BAT_IN_U", "unit":"V",  "desc":"Powersupply Voltage", "influx":true},
+    {"dev":3,"addr":31,"reg":  6,"readInt": 60,"sendInt":3600,"name":"BAT_IN_I", "unit":"A",  "desc":"Powersupply Current"},
+    {"dev":4,"addr":31,"reg": 70,"readInt": 10,"sendInt":3600,"name":"BAT_IN_F", "unit":"Hz", "desc":"Powersupply Frequency"}
+    ]
+}

@@ -56,12 +56,13 @@ static const char *TAG = "diybms";
 #include "defines.h"
 #include "HAL_ESP32.h"
 
-SDM sdm(SERIAL_RS485, 9600, RS485_ENABLE, SERIAL_8N1, RS485_RX, RS485_TX); // pins for DIYBMS => RX pin 21, TX pin 22
+SDM sdm(SERIAL_RS485, 9600, NOT_A_PIN, SERIAL_8N1, RS485_RX, RS485_TX); // pins for DIYBMS => RX pin 16, TX pin 17
 
 #include "Modbus.h"
 
 ModbusInfo ModBus[MODBUS_NUM];
 ModbusVal ModBusVal[MODBUS_NUM];
+uint8_t ModbusNum = 0;
 
 #include "Rules.h"
 #include "avrisp_programmer.h"
@@ -185,37 +186,52 @@ ControllerState ControlState = ControllerState::Unknown;
 
 AsyncMqttClient mqttClient;
 
-void setModbus(int dev, uint8_t addr, uint32_t min, uint32_t max, uint16_t reg, char *name, char *unit, char *desc)
-{
-  ModBus[dev].addr = addr;
-  ModBus[dev].op = MB_READ_REGISTER;
-  ModBus[dev].min = min;
-  ModBus[dev].max = max;
-  ModBus[dev].reg = reg;
-
-  setModbusName(dev, name);
-  setModbusUnit(dev, unit);
-  setModbusDesc(dev, desc);
-
-  ESP_LOGD(TAG, "%d %s %s %s", dev, (char *)ModBus[dev].name, (char *)ModBus[dev].unit, (char *)ModBus[dev].desc);
-}
 
 void InitModbus()
 {
-  sdm.begin();
+
+  File configFile = LITTLEFS.open(MODBUS_FILE_NAME, "r");
+  if(!configFile)
+    ESP_LOGE("Could not open Modbus configuration file.");
+  else
+    ESP_LOGD("Opened Modbus configuration file.");
+
+    const size_t capacity = JSON_ARRAY_SIZE(10) * JSON_OBJECT_SIZE(3) + 100;
+  DynamicJsonDocument doc(capacity);
+
+  DeserializationError err = deserializeJson(doc, configFile);
+  configFile.close();
+
+  if(err) {
+    ESP_LOGE(TAG, "Deserialization error:");
+    return;
+  }
+
+  // extract the values
+  JsonArray devices = doc["modbus"].as<JsonArray>();
+  for(JsonVariant dev : devices) {
+    setModbusName(ModbusNum, (char*) dev["name"].as<char*>());
+    setModbusUnit(ModbusNum, (char*) dev["unit"].as<char*>());
+    setModbusDesc(ModbusNum, (char*) dev["desc"].as<char*>());
+    ModBus[ModbusNum].addr = dev["addr"].as<unsigned char>();
+    ModBus[ModbusNum].op = dev["op"].as<unsigned int>() | MB_READ_REGISTER;
+    ModBus[ModbusNum].readInt = dev["min"].as<unsigned long>() | 10;
+    ModBus[ModbusNum].sendInt = dev["max"].as<unsigned long>() | 3600;
+    ModBus[ModbusNum].readInt = dev["readInt"].as<unsigned long>() | 10;
+    ModBus[ModbusNum].sendInt = dev["sendInt"].as<unsigned long>() | 3600;
+    ModBus[ModbusNum].reg = dev["reg"].as<unsigned int>() | 0;
+    ModBus[ModbusNum].rule = dev["rule"].as<bool>() | false;
+    ModBus[ModbusNum].mqtt = dev["mqtt"].as<bool>() | false;
+    ModBus[ModbusNum].influx = dev["influx"].as<bool>() | false;
+
+    ESP_LOGD(TAG, "Dev: %d Name: %s", ModbusNum, dev["name"].as<char*>());
+    ModbusNum++;
+  }
 
   memset(ModBusVal, 0, sizeof(ModbusVal) * MODBUS_NUM); //initialize SDM communication
 
-  setModbus(0, 31, 60, 3600, SDM_TOTAL_ACTIVE_ENERGY, (char *)"BAT_IN_E", (char *)"kWh", (char *)"Powersupply Energy");
-  setModbus(1, 31, 10, 3600, SDM_PHASE_1_POWER, (char *)"BAT_IN_P", (char *)"W", (char *)"Powersupply Power");
-  setModbus(2, 31, 10, 3600, SDM_PHASE_1_VOLTAGE, (char *)"BAT_IN_U", (char *)"V", (char *)"Powersupply Voltage");
-  setModbus(3, 31, 60, 3600, SDM_PHASE_1_CURRENT, (char *)"BAT_IN_I", (char *)"A", (char *)"Powersupply Current");
-  setModbus(4, 31, 10, 3600, SDM_FREQUENCY, (char *)"BAT_IN_F", (char *)"Hz", (char *)"Powersupply Frequency");
-  setModbus(5, 31, 60, 3600, SDM_TOTAL_ACTIVE_ENERGY, (char *)"BAT_OUT_E", (char *)"kWh", (char *)"Powerwall AC Energy");
-  setModbus(6, 31, 10, 3600, SDM_PHASE_1_POWER, (char *)"BAT_OUT_P", (char *)"W", (char *)"Powerwall AC Power");
-  setModbus(7, 31, 1, 3600, SDM_PHASE_1_VOLTAGE, (char *)"BAT_OUT_U", (char *)"V", (char *)"Powerwall AC Voltage");
-  setModbus(8, 31, 60, 3600, SDM_PHASE_1_CURRENT, (char *)"BAT_OUT_I", (char *)"A", (char *)"Powerwall AC Current");
-  setModbus(9, 31, 5, 3600, SDM_FREQUENCY, (char *)"BAT_OUT_F", (char *)"Hz", (char *)"Powerwall AC Freqency");
+  sdm.begin();
+
 }
 
 void QueueLED(uint8_t bits)
@@ -225,7 +241,8 @@ void QueueLED(uint8_t bits)
   m.command = 0x03;
   //Lowest 3 bits are RGB led GREEN/RED/BLUE
   m.data = bits & B00000111;
-  xQueueSendToBack(queue_i2c, &m, 10 / portTICK_PERIOD_MS);
+  if(I2C_ENABLED)
+    xQueueSendToBack(queue_i2c, &m, 10 / portTICK_PERIOD_MS);
 }
 
 //Output a status log to the SD Card in CSV format
@@ -496,7 +513,7 @@ void modbuscomms_task(void *param)
     //ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
     //Wait 5 seconds
-    vTaskDelay(5000 / portTICK_PERIOD_MS);
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
 
     if (MODBUS_NUM)
     {
@@ -504,12 +521,10 @@ void modbuscomms_task(void *param)
       //if (ModBus[ind].min < (ts - ModBusVal[ind].last) / 1000)
       //{
 
-      /*
       ModBusVal[ind].val = sdm.readVal(ModBus[ind].reg, ModBus[ind].addr);
-*/
       //ModBusVal[ind].last = ts;
 
-      //      SERIAL_DEBUG.printf("Read Modbus: %d %s: %f\n", ind, ModBus[ind].name, ModBusVal[ind].val);
+      ESP_LOGI(TAG, "Read Modbus: %d %s: %f\n", ind, ModBus[ind].name, ModBusVal[ind].val);
       //}
 
       if (++ind >= MODBUS_NUM)
@@ -558,6 +573,7 @@ void ledoff_task(void *param)
 // Provides thread safe mechanism to talk to i2c
 void i2c_task(void *param)
 {
+  if(I2C_ENABLED)
   for (;;)
   {
     i2cQueueMessage m;
@@ -1003,7 +1019,8 @@ void timerSwitchPulsedRelay()
       //Different command for each relay
       m.command = 0xE0 + y;
       m.data = previousRelayState[y] == RelayState::RELAY_ON ? RelayState::RELAY_OFF : RelayState::RELAY_ON;
-      xQueueSendToBack(queue_i2c, &m, 10 / portTICK_PERIOD_MS);
+      if(I2C_ENABLED)
+        xQueueSendToBack(queue_i2c, &m, 10 / portTICK_PERIOD_MS);
 
       previousRelayPulse[y] = false;
     }
@@ -1081,7 +1098,8 @@ void timerProcessRules()
       //Different command for each relay
       m.command = 0xE0 + n;
       m.data = relay[n];
-      xQueueSendToBack(queue_i2c, &m, 10 / portTICK_PERIOD_MS);
+      if(I2C_ENABLED)
+        xQueueSendToBack(queue_i2c, &m, 10 / portTICK_PERIOD_MS);
 
       previousRelayState[n] = relay[n];
 
@@ -1616,6 +1634,25 @@ void sendMqttPacket()
     //Completed the loop, start at zero
     mqttStartModule = 0;
   }
+
+  for(uint8_t i=0; i< ModbusNum; i++) {
+
+    if(ModBus[i].mqtt) {
+
+      doc.clear();
+      doc["value"] = ModBusVal[i].val;
+      doc["unit"] = ModBus[i].unit;
+      serializeJson(doc, jsonbuffer, sizeof(jsonbuffer));
+
+      sprintf(topic, "%s/%s", mysettings.mqtt_topic, ModBus[i].name);
+
+      mqttClient.publish(topic, 0, false, jsonbuffer);
+
+      ESP_LOGD(TAG, "MQTT %s %s", topic, jsonbuffer);
+    }
+  }
+
+
 }
 
 void onMqttConnect(bool sessionPresent)
@@ -1964,7 +2001,8 @@ void tft_display_off()
   m.command = 0x04;
   //Lowest 3 bits are RGB led GREEN/RED/BLUE
   m.data = false;
-  xQueueSendToBack(queue_i2c, &m, 10 / portTICK_PERIOD_MS);
+  if(I2C_ENABLED)
+    xQueueSendToBack(queue_i2c, &m, 10 / portTICK_PERIOD_MS);
 }
 
 void init_tft_display()
@@ -2127,12 +2165,14 @@ void setup()
   DIYBMSServer::generateUUID();
 
   hal.ConfigurePins(WifiPasswordClear);
-  hal.ConfigureI2C(TCA6408Interrupt, TCA9534AInterrupt);
+  if(I2C_ENABLED)
+    hal.ConfigureI2C(TCA6408Interrupt, TCA9534AInterrupt);
   hal.ConfigureVSPI();
 
   SetControllerState(ControllerState::PowerUp);
 
-  hal.Led(0);
+  if(I2C_ENABLED)
+    hal.Led(0);
 
   if (!LITTLEFS.begin(false))
   {
@@ -2301,7 +2341,8 @@ TEST CAN BUS
   InitModbus();
 
   //Create i2c task on CPU 0 (normal code runs on CPU 1)
-  xTaskCreatePinnedToCore(i2c_task, "i2c", 2048, nullptr, 2, &i2c_task_handle, 0);
+  if(I2C_ENABLED)
+    xTaskCreatePinnedToCore(i2c_task, "i2c", 2048, nullptr, 2, &i2c_task_handle, 0);
   xTaskCreatePinnedToCore(ledoff_task, "ledoff", 1048, nullptr, 1, &ledoff_task_handle, 0);
   xTaskCreate(wifiresetdisable_task, "wifidbl", 1048, nullptr, 1, &wifiresetdisable_task_handle);
   xTaskCreate(modbuscomms_task, "modbusc", 2048, nullptr, 1, &modbuscomms_task_handle);

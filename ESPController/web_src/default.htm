@@ -242,6 +242,7 @@
                         <th>Description</th>
                         <th>Rule</th>
                         <th>MQTT</th>
+                        <th>InfluxDB</th>
                         <th></th>
                         <th></th>
                     </tr>
@@ -282,12 +283,12 @@
                         <input type="text" name="unit" id="desc" value="">
                     </div>
                     <div>
-                        <label for="min">Min duration (s)</label>
-                        <input type="text" name="min" id="min" value="">
+                        <label for="readInt">Read Interval (s)</label>
+                        <input type="Number" name="readInt" id="readInt" value="">
                     </div>
                     <div>
-                        <label for="max">Max duration (s)</label>
-                        <input type="text" name="max" id="max" value="">
+                        <label for="SendInt">Send Interval (s)</label>
+                        <input type="number" name="SendInt" id="SendInt" value="">
                     </div>
                     <div>
                         <label for="rule">Used in Rules</label>
@@ -296,6 +297,10 @@
                     <div>
                         <label for="mqtt">MQTT</label>
                         <input type="checkbox" name="mqtt" id="mqtt">
+                    </div>
+                    <div>
+                        <label for="influx">InfluxDB</label>
+                        <input type="checkbox" name="influx" id="influx">
                     </div>
 
                     <input type="submit" value="Save settings" />

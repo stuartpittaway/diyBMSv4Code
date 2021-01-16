@@ -877,7 +877,7 @@ void DIYBMSServer::modbusVal(AsyncWebServerRequest *request)
   JsonArray val = root.createNestedArray("val");
   JsonArray last = root.createNestedArray("last");
 
-  for (int i = 0; i < MODBUS_NUM; i++)
+  for (int i = 0; i < ModbusNum; i++)
   {
     val.add((*_ModBusVal)[i].val);
     last.add((float)(*_ModBusVal)[i].last / 1000.0);
@@ -895,41 +895,25 @@ void DIYBMSServer::modbus(AsyncWebServerRequest *request)
   DynamicJsonDocument doc(4096);
   JsonObject root = doc.to<JsonObject>();
 
-  /*
-  JsonArray addr = root.createNestedArray("addr");
-  JsonArray reg  = root.createNestedArray("reg");
-  JsonArray name = root.createNestedArray("name");
-  JsonArray unit = root.createNestedArray("unit");
-  JsonArray desc = root.createNestedArray("desc");
-
-  for (int i=0; i<MODBUS_NUM; i++) {
-
-    addr.add(ModBus[i].addr);
-    reg.add(ModBus[i].reg);
-    name.add(ModBus[i].name);
-    unit.add(ModBus[i].unit);
-    desc.add(ModBus[i].desc);
-  }
-*/
-
   JsonArray modbus = root.createNestedArray("modbus");
 
   const int capacity = JSON_OBJECT_SIZE(100);
   StaticJsonDocument<capacity> obj;
 
-  for (int i = 0; i < MODBUS_NUM; i++)
+  for (int i = 0; i < ModbusNum; i++)
   {
 
     obj["dev"] = i;
     obj["addr"] = (*_ModBus)[i].addr;
     obj["reg"] = (*_ModBus)[i].reg;
-    obj["min"] = (*_ModBus)[i].min;
-    obj["max"] = (*_ModBus)[i].max;
-    obj["rule"] = (*_ModBus)[i].rule ? "X" : "";
-    obj["mqtt"] = (*_ModBus)[i].mqtt ? "X" : "";
+    obj["readInt"] = (*_ModBus)[i].readInt;
+    obj["sendInt"] = (*_ModBus)[i].sendInt;
     obj["name"] = (char *)(*_ModBus)[i].name;
     obj["unit"] = (char *)(*_ModBus)[i].unit;
     obj["desc"] = (char *)(*_ModBus)[i].desc;
+    obj["rule"] = (*_ModBus)[i].rule ? "X" : "";
+    obj["mqtt"] = (*_ModBus)[i].mqtt ? "X" : "";
+    obj["influx"] = (*_ModBus)[i].influx ? "X" : "";
 
     modbus.add(obj);
   }
@@ -955,7 +939,7 @@ void DIYBMSServer::saveModbus(AsyncWebServerRequest *request)
     //Will this overflow?
     uint8_t d = device->value().toInt();
 
-    if (d >= MODBUS_NUM)
+    if (d >= ModbusNum)
     {
       request->send(500, "text/plain", "Wrong parameters");
     }
@@ -972,15 +956,15 @@ void DIYBMSServer::saveModbus(AsyncWebServerRequest *request)
         AsyncWebParameter *p1 = request->getParam("reg", true);
         (*_ModBus)[d].reg = p1->value().toInt();
       }
-      if (request->hasParam("min", true))
+      if (request->hasParam("readInt", true))
       {
-        AsyncWebParameter *p1 = request->getParam("min", true);
-        (*_ModBus)[d].min = p1->value().toInt();
+        AsyncWebParameter *p1 = request->getParam("readInt", true);
+        (*_ModBus)[d].readInt = p1->value().toInt();
       }
-      if (request->hasParam("max", true))
+      if (request->hasParam("sendInt", true))
       {
-        AsyncWebParameter *p1 = request->getParam("max", true);
-        (*_ModBus)[d].max = p1->value().toInt();
+        AsyncWebParameter *p1 = request->getParam("sendInt", true);
+        (*_ModBus)[d].sendInt = p1->value().toInt();
       }
 
       if (request->hasParam("name", true))
@@ -1004,6 +988,9 @@ void DIYBMSServer::saveModbus(AsyncWebServerRequest *request)
 
       (*_ModBus)[d].mqtt = request->hasParam("mqtt", true);
       ESP_LOGD(TAG, "MQTT %d\n", (*_ModBus)[d].mqtt);
+
+      (*_ModBus)[d].influx = request->hasParam("influx", true);
+      ESP_LOGD(TAG, "Influx %d\n", (*_ModBus)[d].influx);
 
       //      prg.sendSaveSetting(m, BypassThresholdmV, BypassOverTempShutdown, Calibration);
 
