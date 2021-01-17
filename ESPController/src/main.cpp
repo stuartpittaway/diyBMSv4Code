@@ -56,7 +56,7 @@ static const char *TAG = "diybms";
 #include "defines.h"
 #include "HAL_ESP32.h"
 
-SDM sdm(SERIAL_RS485, 9600, NOT_A_PIN, SERIAL_8N1, RS485_RX, RS485_TX); // pins for DIYBMS => RX pin 16, TX pin 17
+// SDM sdm(SERIAL_RS485, 9600, NOT_A_PIN, SERIAL_8N1, RS485_RX, RS485_TX); // pins for DIYBMS => RX pin 16, TX pin 17
 
 #include "Modbus.h"
 
@@ -68,6 +68,7 @@ uint8_t ModbusNum = 0;
 #include "avrisp_programmer.h"
 
 //void InitModbus();
+void loadModbusConfig();
 
 void setModbus(int dev, uint8_t addr, uint32_t min, uint32_t max, uint16_t reg, char *name, char *unit, char *desc);
 void setModbusName(int dev, char *cp) { strncpy(ModBus[dev].name, cp, MODBUS_NAME_LEN); }
@@ -187,7 +188,7 @@ ControllerState ControlState = ControllerState::Unknown;
 AsyncMqttClient mqttClient;
 
 
-void InitModbus()
+void loadModbusConfig()
 {
 
   File configFile = LITTLEFS.open(MODBUS_FILE_NAME, "r");
@@ -213,6 +214,7 @@ void InitModbus()
     setModbusName(ModbusNum, (char*) dev["name"].as<char*>());
     setModbusUnit(ModbusNum, (char*) dev["unit"].as<char*>());
     setModbusDesc(ModbusNum, (char*) dev["desc"].as<char*>());
+    ModBus[ModbusNum].type = (dev["type"].as<unsigned char>()) | TYPE_FLOAT;
     ModBus[ModbusNum].addr = dev["addr"].as<unsigned char>();
     ModBus[ModbusNum].op = dev["op"].as<unsigned int>() | MB_READ_REGISTER;
     ModBus[ModbusNum].readInt = dev["min"].as<unsigned long>() | 10;
@@ -230,7 +232,6 @@ void InitModbus()
 
   memset(ModBusVal, 0, sizeof(ModbusVal) * MODBUS_NUM); //initialize SDM communication
 
-  sdm.begin();
 
 }
 
@@ -515,19 +516,15 @@ void modbuscomms_task(void *param)
     //Wait 5 seconds
     vTaskDelay(1000 / portTICK_PERIOD_MS);
 
-    if (MODBUS_NUM)
+    if (ModbusNum)
     {
 
-      //if (ModBus[ind].min < (ts - ModBusVal[ind].last) / 1000)
-      //{
-
-      ModBusVal[ind].val = sdm.readVal(ModBus[ind].reg, ModBus[ind].addr);
-      //ModBusVal[ind].last = ts;
+      readModbusVal(ind);
 
       ESP_LOGI(TAG, "Read Modbus: %d %s: %f\n", ind, ModBus[ind].name, ModBusVal[ind].val);
       //}
 
-      if (++ind >= MODBUS_NUM)
+      if (++ind >= ModbusNum)
         ind = 0;
     }
   }
@@ -2338,7 +2335,9 @@ TEST CAN BUS
   queue_i2c = xQueueCreate(10, sizeof(i2cQueueMessage));
 
   //Needs to be before xTaskCreate(modbuscomms_task
-  InitModbus();
+  //setupModbus(RS485_BAUD, RS485_RX, RS485_TX, RS485_ENABLE);
+  setupModbus(RS485_BAUD, RS485_RX, RS485_TX, NOT_A_PIN);
+  loadModbusConfig();
 
   //Create i2c task on CPU 0 (normal code runs on CPU 1)
   if(I2C_ENABLED)

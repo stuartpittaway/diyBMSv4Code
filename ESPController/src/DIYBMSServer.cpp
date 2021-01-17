@@ -880,7 +880,7 @@ void DIYBMSServer::modbusVal(AsyncWebServerRequest *request)
   for (int i = 0; i < ModbusNum; i++)
   {
     val.add((*_ModBusVal)[i].val);
-    last.add((float)(*_ModBusVal)[i].last / 1000.0);
+    last.add((float)(*_ModBusVal)[i].lastRead / 1000.0);
   }
 
   serializeJson(doc, *response);
