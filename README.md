@@ -16,6 +16,13 @@ Any donations go towards the on going development and prototype costs of the pro
 
 https://www.youtube.com/stuartpittaway
 
+### Video on how to program the devices
+https://youtu.be/wTqDMg_Ql98
+
+### Video on how to order from JLCPCB
+https://youtu.be/E1OS0ZOmOT8
+
+
 # Help
 
 If you need help, ask over at the [forum](https://community.openenergymonitor.org/t/diybms-v4)
