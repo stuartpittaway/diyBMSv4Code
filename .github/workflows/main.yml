@@ -117,7 +117,7 @@ jobs:
       run: echo "dt=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
 
     - name: Display structure of downloaded files
-      run: mv release.zip release_${{ dt }}.zip
+      run: mv release.zip release_${{ env.dt }}.zip
 
     - name: Create Release Files on MASTER branch only
       id: create_release
@@ -126,8 +126,8 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
       with:
-        tag_name: Tag-${{ dt }}
-        release_name: Release-${{ dt }}
+        tag_name: Tag-${{ env.dt }}
+        release_name: Release-${{ env.dt }}
         body: |
           Automatically generated release
         draft: false
@@ -141,6 +141,6 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }} 
-        asset_path: ./release_${{ dt }}.zip
-        asset_name: Compiled_Firmware_${{ dt }}.zip
+        asset_path: ./release_${{ env.dt }}.zip
+        asset_name: Compiled_Firmware_${{ env.dt }}.zip
         asset_content_type: application/zip
