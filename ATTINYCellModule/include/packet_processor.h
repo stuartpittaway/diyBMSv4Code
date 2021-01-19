@@ -14,20 +14,24 @@
 #define ADC_EXTERNAL_TEMP 2
 
 //Define maximum allowed temperature as safety cut off
-#define DIYBMS_MODULE_SafetyTemperatureCutoff 90
+#define DIYBMS_MODULE_SafetyTemperatureCutoff (int16_t)90
 
 #define maximum_cell_modules 16
 
+//NOTE THIS MUST BE EVEN IN SIZE (BYTES) ESP8266 IS 32 BIT AND WILL ALIGN AS SUCH!
 struct PacketStruct
 {
-  uint8_t address;
+  uint8_t start_address;
+  uint8_t end_address;
   uint8_t command;
+  uint8_t hops;
   uint16_t sequence;
   uint16_t moduledata[maximum_cell_modules];
   uint16_t crc;
 } __attribute__((packed));
 
-typedef union {
+typedef union
+{
   float number;
   uint8_t bytes[4];
   uint16_t word[2];
@@ -36,72 +40,77 @@ typedef union {
 class PacketProcessor
 {
 public:
-  PacketProcessor(DiyBMSATTiny841 *hardware, CellModuleConfig *config)
+  PacketProcessor(CellModuleConfig *config)
   {
-    _hardware = hardware;
     _config = config;
-    SettingsHaveChanged=false;
-    WeAreInBypass=false;
+    SettingsHaveChanged = false;
+    WeAreInBypass = false;
     bypassCountDown = 0;
     bypassHasJustFinished = 0;
-    pwmrunning = false;
   }
   ~PacketProcessor() {}
-  
-  bool onPacketReceived(const uint8_t *receivebuffer, size_t len);
-  byte *GetBufferPointer();
-  int GetBufferSize();
+
+  bool onPacketReceived(PacketStruct *receivebuffer);
 
   void ADCReading(uint16_t value);
   void TakeAnAnalogueReading(uint8_t mode);
   uint16_t CellVoltage();
+  
   uint16_t IncrementWatchdogCounter()
   {
     watchdog_counter++;
     return watchdog_counter;
   }
+
   bool BypassCheck();
   uint16_t TemperatureMeasurement();
-  byte identifyModule;
+  uint8_t identifyModule;
   bool BypassOverheatCheck();
 
   //Raw value returned from ADC (10bit)
   uint16_t RawADCValue();
   int16_t InternalTemperature();
 
-  //Returns TRUE if the module is bypassing current
+  volatile float MilliAmpHourBalanceCounter = 0;
+
+  //Returns TRUE if the module is in "bypassing current" mode
   bool WeAreInBypass;
 
-  //Value of PWM 0-100
-  uint16_t PWMValue;
+  //Value of PWM 0-255
+  volatile uint8_t PWMSetPoint;
   volatile bool SettingsHaveChanged;
 
+  //Count down which runs whilst bypass is in operation,  zero = bypass stopped/off
   uint16_t bypassCountDown;
-  uint8_t bypassHasJustFinished;
-  bool pwmrunning;
 
-  bool IsBypassActive() {
-    return WeAreInBypass || bypassHasJustFinished>0 || pwmrunning;
+  //Count down which starts after the current cycle of bypass has completed (aka cool down period whilst voltage may rise again)
+  uint8_t bypassHasJustFinished;
+
+  bool IsBypassActive()
+  {
+    return WeAreInBypass || bypassHasJustFinished > 0;
   }
 
 private:
-  DiyBMSATTiny841 *_hardware;
   CellModuleConfig *_config;
 
-  PacketStruct buffer;
+  bool processPacket(PacketStruct *buffer);
 
-  bool processPacket();
-  void incrementPacketAddress();
-  bool isPacketForMe();
-  //uint8_t TemperatureToByte(float TempInCelcius);
-
+  volatile bool ModuleAddressAssignedFlag = false;
   volatile uint8_t adcmode = 0;
   volatile uint16_t raw_adc_voltage;
-  volatile uint16_t onboard_temperature;
-  volatile uint16_t external_temperature;
-  volatile uint8_t mymoduleaddress = 0xFF;
+  volatile uint16_t raw_adc_onboard_temperature;
+  volatile uint16_t raw_adc_external_temperature;
+
+  //Cell number in the string (updated dynamically)
+  volatile uint8_t mymoduleaddress = 0;
+  //Count of bad packets of data received, most likely with corrupt data or crc errors
   volatile uint16_t badpackets = 0;
+  //Count of number of WDT events which have triggered, could indicate standalone mode or problems with serial comms
   volatile uint16_t watchdog_counter = 0;
+
+  uint16_t PacketReceivedCounter=0;
+
 };
 
 #endif
