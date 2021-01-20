@@ -114,7 +114,7 @@ jobs:
 
     - name: Get current date
       id: date
-      run: echo "dt=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
+      run: echo "dt=$(date +'%Y-%m-%d-%H-%M')" >> $GITHUB_ENV
 
     - name: Display structure of downloaded files
       run: mv release.zip release_${{ env.dt }}.zip
