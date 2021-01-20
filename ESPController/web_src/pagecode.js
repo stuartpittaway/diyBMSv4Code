@@ -128,13 +128,17 @@ function queryBMS() {
                 if (v > maxVoltage) { maxVoltage = v; }
                 if (v < minVoltage) { minVoltage = v; }
 
-                voltagesmin.push((parseFloat(jsondata.minvoltages[i]) / 1000.0));
-                voltagesmax.push((parseFloat(jsondata.maxvoltages[i]) / 1000.0));
+                if (jsondata.minvoltages) {
+                    voltagesmin.push((parseFloat(jsondata.minvoltages[i]) / 1000.0));
+                }
+                if (jsondata.maxvoltages) {
+                    voltagesmax.push((parseFloat(jsondata.maxvoltages[i]) / 1000.0));
+                }
 
                 bank.push(bankNumber);
                 cells.push(i);
 
-                
+
                 cellsInBank++;
                 if (cellsInBank == jsondata.seriesmodules) {
                     cellsInBank = 0;
@@ -144,7 +148,7 @@ function queryBMS() {
                 color = jsondata.bypasshot[i] == 1 ? red : stdcolor;
                 tempint.push({ value: jsondata.inttemp[i], itemStyle: { color: color } });
                 tempext.push({ value: (jsondata.exttemp[i] == -40 ? 0 : jsondata.exttemp[i]), itemStyle: { color: stdcolor } });
-                pwm.push({ value: jsondata.bypasspwm[i] == 0 ? null : Math.trunc(jsondata.bypasspwm[i]/255*100) });
+                pwm.push({ value: jsondata.bypasspwm[i] == 0 ? null : Math.trunc(jsondata.bypasspwm[i] / 255 * 100) });
             }
         }
 
@@ -238,8 +242,16 @@ function queryBMS() {
             $.each(cells, function (index, value) {
                 var columns = $(rows[index]).find("td");
                 $(columns[2]).html(voltages[index].value.toFixed(3));
-                $(columns[3]).html(voltagesmin[index].toFixed(3));
-                $(columns[4]).html(voltagesmax[index].toFixed(3));
+                if (voltagesmin.length > 0) {
+                    $(columns[3]).html(voltagesmin[index].toFixed(3));
+                } else {
+                    $(columns[3]).html("n/a");
+                }
+                if (voltagesmax.length > 0) {
+                    $(columns[4]).html(voltagesmax[index].toFixed(3));
+                } else {
+                    $(columns[4]).html("n/a");
+                }
                 $(columns[5]).html(tempint[index].value);
                 $(columns[6]).html(tempext[index].value);
                 $(columns[7]).html(pwm[index].value);
@@ -252,7 +264,7 @@ function queryBMS() {
             //packets as small as possible
 
 
-            $.getJSON("monitor3.json", function (jsondata) {              
+            $.getJSON("monitor3.json", function (jsondata) {
                 var tbody = $("#modulesRows");
                 var rows = $(tbody).find("tr");
                 $.each(cells, function (index, value) {
@@ -724,6 +736,8 @@ $(function () {
 
         $.getJSON("settings.json",
             function (data) {
+                $("#FreeBlockSize").html(data.settings.FreeBlockSize);
+                $("#FreeHeap").html(data.settings.FreeHeap);
                 $("#aboutPage").show();
             }).fail(function () { }
             );

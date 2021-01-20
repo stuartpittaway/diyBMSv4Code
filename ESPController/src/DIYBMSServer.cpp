@@ -308,7 +308,8 @@ void DIYBMSServer::saveRuleConfiguration(AsyncWebServerRequest *request)
       if (request->hasParam(name, true))
       {
         AsyncWebParameter *p1 = request->getParam(name, true);
-        mysettings.rulerelaystate[rule][i] = p1->value().equals("X") ? RELAY_X : p1->value().equals("On") ? RelayState::RELAY_ON : RelayState::RELAY_OFF;
+        mysettings.rulerelaystate[rule][i] = p1->value().equals("X") ? RELAY_X : p1->value().equals("On") ? RelayState::RELAY_ON
+                                                                                                          : RelayState::RELAY_OFF;
       }
     }
 
@@ -686,6 +687,9 @@ void DIYBMSServer::settings(AsyncWebServerRequest *request)
   settings["MinutesTimeZone"] = mysettings.minutesTimeZone;
   settings["DST"] = mysettings.daylight;
 
+  settings["FreeHeap"] = ESP.getFreeHeap();
+  settings["FreeBlockSize"] = ESP.getMaxFreeBlockSize();
+
 #if defined(ESP8266)
   settings["now"] = now();
 #endif
@@ -817,188 +821,340 @@ void DIYBMSServer::handleRestartController(AsyncWebServerRequest *request)
 
 void DIYBMSServer::monitor3(AsyncWebServerRequest *request)
 {
-  DynamicJsonDocument doc(maximum_controller_cell_modules * 50);
-
+  //DynamicJsonDocument doc(maximum_controller_cell_modules * 50);
   AsyncResponseStream *response = request->beginResponseStream("application/json");
 
-  //This service exists to ensure that monitor2 is keep as small as possible
-  //for ESP8266 memory limitations, these values are only updated very infrequently (lazy timer)
-  JsonArray badpacket = doc.createNestedArray("badpacket");
-  JsonArray balancecurrentcount = doc.createNestedArray("balcurrent");
-  JsonArray packetreceivedcount = doc.createNestedArray("pktrecvd");
-
-  //doc["FreeHeap"] = ESP.getFreeHeap();
-  //doc["FreeBlockSize"] = ESP.getMaxFreeBlockSize();
-
   uint8_t totalModules = mysettings.totalNumberOfBanks * mysettings.totalNumberOfSeriesModules;
+  uint8_t comma = totalModules - 1;
+
+  response->print("{\"badpacket\":[");
+
   for (uint8_t i = 0; i < totalModules; i++)
   {
     if (cmi[i].valid)
     {
-      //Just for debug, move these to config packets instead
-      balancecurrentcount.add(cmi[i].BalanceCurrentCount);
-      packetreceivedcount.add(cmi[i].PacketReceivedCount);
-      badpacket.add(cmi[i].badPacketCount);
+      response->print(cmi[i].badPacketCount);
     }
     else
     {
       //Return NULL
-      balancecurrentcount.add((char *)0);
-      packetreceivedcount.add((char *)0);
-      badpacket.add((char *)0);
+      response->print("null");
+    }
+    if (i < comma)
+    {
+      response->print(',');
     }
   }
 
-  serializeJson(doc, *response);
+  response->print("],\"balcurrent\":[");
+
+  for (uint8_t i = 0; i < totalModules; i++)
+  {
+    if (cmi[i].valid)
+    {
+      response->print(cmi[i].BalanceCurrentCount);
+    }
+    else
+    {
+      //Return NULL
+      response->print("null");
+    }
+    if (i < comma)
+    {
+      response->print(',');
+    }
+  }
+
+  response->print("],\"pktrecvd\":[");
+
+  for (uint8_t i = 0; i < totalModules; i++)
+  {
+    if (cmi[i].valid)
+    {
+      response->print(cmi[i].PacketReceivedCount);
+    }
+    else
+    {
+      //Return NULL
+      response->print("null");
+    }
+    if (i < comma)
+    {
+      response->print(',');
+    }
+  }
+  response->print("]}");
+
   request->send(response);
+}
+
+void DIYBMSServer::PrintStreamComma(AsyncResponseStream *response, const __FlashStringHelper *ifsh, uint32_t value)
+{
+  response->print(ifsh);
+  response->print(value);
+  response->print(',');
 }
 
 void DIYBMSServer::monitor2(AsyncWebServerRequest *request)
 {
-  DynamicJsonDocument doc(maximum_controller_cell_modules * 140);
+  uint8_t totalModules = mysettings.totalNumberOfBanks * mysettings.totalNumberOfSeriesModules;
+  const char comma = ',';
+  const char *null = "null";
 
-  if (doc.capacity() == 0)
+  AsyncResponseStream *response = request->beginResponseStream("application/json");
+
+  PrintStreamComma(response, F("{\"banks\":"), mysettings.totalNumberOfBanks);
+  PrintStreamComma(response, F("\"seriesmodules\":"), mysettings.totalNumberOfSeriesModules);
+  PrintStreamComma(response, F("\"sent\":"), prg.packetsGenerated);
+  PrintStreamComma(response, F("\"received\":"), receiveProc.packetsReceived);
+  PrintStreamComma(response, F("\"modulesfnd\":"), receiveProc.totalModulesFound);
+  PrintStreamComma(response, F("\"badcrc\":"), receiveProc.totalCRCErrors);
+  PrintStreamComma(response, F("\"ignored\":"), receiveProc.totalNotProcessedErrors);
+  PrintStreamComma(response, F("\"roundtrip\":"), receiveProc.packetTimerMillisecond);
+  PrintStreamComma(response, F("\"oos\":"), receiveProc.totalOutofSequenceErrors);
+
+  response->print(F("\"errors\":["));
+  for (size_t i = 0; i < sizeof(rules.ErrorCodes); i++)
   {
-    //If memory allocation fails, swap to a small JSON document
-    //so the interface can report the error.
-    AsyncResponseStream *response = request->beginResponseStream("application/json");
-    DynamicJsonDocument doc2(512);
+    if (rules.ErrorCodes[i] != InternalErrorCode::NoError)
+    {
+      //Comma if not zero
+      if (i)
+        response->print(comma);
 
-    doc2["banks"] = mysettings.totalNumberOfBanks;
-    doc2["seriesmodules"] = mysettings.totalNumberOfSeriesModules;
-    JsonArray errors = doc2.createNestedArray("errors");
-    //JsonArray warnings = doc2.createNestedArray("warnings");
-    errors.add(InternalErrorCode::ControllerMemoryError);
-    doc2["sent"] = prg.packetsGenerated;
-    doc2["received"] = receiveProc.packetsReceived;
-    doc2["modulesfnd"] = receiveProc.totalModulesFound;
-    doc2["badcrc"] = receiveProc.totalCRCErrors;
-    doc2["ignored"] = receiveProc.totalNotProcessedErrors;
-    doc2["roundtrip"] = receiveProc.packetTimerMillisecond;
-    doc2["oos"] = receiveProc.totalOutofSequenceErrors;
-
-    serializeJson(doc2, *response);
-    request->send(response);
+      response->print(rules.ErrorCodes[i]);
+    }
   }
-  else
+
+  response->print("],");
+
+  response->print(F("\"warnings\":["));
+  for (size_t i = 0; i < sizeof(rules.WarningCodes); i++)
   {
-    AsyncResponseStream *response = request->beginResponseStream("application/json");
-
-    doc["banks"] = mysettings.totalNumberOfBanks;
-    doc["seriesmodules"] = mysettings.totalNumberOfSeriesModules;
-    JsonArray errors = doc.createNestedArray("errors");
-    for (size_t i = 0; i < sizeof(rules.ErrorCodes); i++)
+    if (rules.WarningCodes[i] != InternalWarningCode::NoWarning)
     {
-      if (rules.ErrorCodes[i] != InternalErrorCode::NoError)
-      {
-        errors.add(rules.ErrorCodes[i]);
-      }
+      //Comma if not zero
+      if (i)
+        response->print(comma);
+
+      response->print(rules.WarningCodes[i]);
     }
-
-    JsonArray warnings = doc.createNestedArray("warnings");
-    for (size_t i = 0; i < sizeof(rules.WarningCodes); i++)
-    {
-      if (rules.WarningCodes[i] != InternalWarningCode::NoWarning)
-      {
-        warnings.add(rules.WarningCodes[i]);
-      }
-    }
-
-    doc["sent"] = prg.packetsGenerated;
-    doc["received"] = receiveProc.packetsReceived;
-    doc["modulesfnd"] = receiveProc.totalModulesFound;
-    doc["badcrc"] = receiveProc.totalCRCErrors;
-    doc["ignored"] = receiveProc.totalNotProcessedErrors;
-    doc["roundtrip"] = receiveProc.packetTimerMillisecond;
-    doc["oos"] = receiveProc.totalOutofSequenceErrors;
-
-    uint8_t totalModules = mysettings.totalNumberOfBanks * mysettings.totalNumberOfSeriesModules;
-
-    JsonArray voltages = doc.createNestedArray("voltages");
-
-    JsonArray minvoltages = doc.createNestedArray("minvoltages");
-    JsonArray maxvoltages = doc.createNestedArray("maxvoltages");
-
-    JsonArray bypass = doc.createNestedArray("bypass");
-    JsonArray bypasshot = doc.createNestedArray("bypasshot");
-    JsonArray inttemp = doc.createNestedArray("inttemp");
-    JsonArray exttemp = doc.createNestedArray("exttemp");
-    JsonArray bypasspwm = doc.createNestedArray("bypasspwm");
-
-    for (uint8_t i = 0; i < totalModules; i++)
-    {
-      if (cmi[i].valid)
-      {
-        voltages.add(cmi[i].voltagemV);
-
-        if (totalModules <= 64)
-        {
-          //To preserve memory, only return these parameters when there are less than =64 modules
-          minvoltages.add(cmi[i].voltagemVMin);
-          maxvoltages.add(cmi[i].voltagemVMax);
-        }
-
-        if (cmi[i].internalTemp != -40)
-        {
-          inttemp.add(cmi[i].internalTemp);
-        }
-        else
-        {
-          inttemp.add((char *)0);
-        }
-
-        if (cmi[i].externalTemp != -40)
-        {
-          exttemp.add(cmi[i].externalTemp);
-        }
-        else
-        {
-          exttemp.add((char *)0);
-        }
-
-        bypasspwm.add(cmi[i].inBypass ? cmi[i].PWMValue : 0);
-        //Convert boolean to 1 or 0 to save bandwidth (every byte counts on this request)
-        bypass.add(cmi[i].inBypass ? 1 : 0);
-        bypasshot.add(cmi[i].bypassOverTemp ? 1 : 0);
-      }
-      else
-      {
-        //Module is not yet valid so return null values...
-        voltages.add((char *)0);
-        if (totalModules <= 64)
-        {
-          minvoltages.add((char *)0);
-          maxvoltages.add((char *)0);
-          //badpacket.add(0);
-        }
-        inttemp.add((char *)0);
-        exttemp.add((char *)0);
-        bypasspwm.add(0);
-        //Convert boolean to 1 or 0 to save bandwidth (every byte counts on this request)
-        bypass.add(0);
-        bypasshot.add(0);
-      }
-    }
-
-    JsonArray bankvoltage = doc.createNestedArray("bankv");
-    JsonArray voltagerange = doc.createNestedArray("voltrange");
-    for (uint8_t b = 0; b < mysettings.totalNumberOfBanks; b++)
-    {
-      bankvoltage.add(rules.packvoltage[b]);
-      voltagerange.add(rules.VoltageRangeInBank(b));
-    }
-
-    //Current reading in mA
-    JsonArray current = doc.createNestedArray("current");
-    //current.add(10000);
-    //NULL
-    current.add((char *)0);
-
-    response->addHeader("Cache-Control", "no-store");
-
-    serializeJson(doc, *response);
-    request->send(response);
   }
+  response->print("],");
+
+  //voltages
+  response->print(F("\"voltages\":["));
+
+  for (uint8_t i = 0; i < totalModules; i++)
+  {
+    //Comma if not zero
+    if (i)
+      response->print(comma);
+
+    if (cmi[i].valid)
+    {
+      response->print(cmi[i].voltagemV);
+    }
+    else
+    {
+      //Module is not yet valid so return null values...
+      response->print(null);
+    }
+  }
+  response->print("],");
+
+  response->print(F("\"minvoltages\":["));
+
+  for (uint8_t i = 0; i < totalModules; i++)
+  {
+    //Comma if not zero
+    if (i)
+      response->print(comma);
+
+    if (cmi[i].valid)
+    {
+      response->print(cmi[i].voltagemVMin);
+    }
+    else
+    {
+      //Module is not yet valid so return null values...
+      response->print(null);
+    }
+  }
+  response->print("],");
+
+  //maxvoltages
+
+  response->print(F("\"maxvoltages\":["));
+
+  for (uint8_t i = 0; i < totalModules; i++)
+  {
+    //Comma if not zero
+    if (i)
+      response->print(comma);
+
+    if (cmi[i].valid)
+    {
+      response->print(cmi[i].voltagemVMax);
+    }
+    else
+    {
+      //Module is not yet valid so return null values...
+      response->print(null);
+    }
+  }
+  response->print("]");
+
+  response->print(comma);
+
+  //inttemp
+  response->print(F("\"inttemp\":["));
+
+  for (uint8_t i = 0; i < totalModules; i++)
+  {
+    //Comma if not zero
+    if (i)
+      response->print(comma);
+
+    if (cmi[i].valid && cmi[i].internalTemp != -40)
+    {
+      response->print(cmi[i].internalTemp);
+    }
+    else
+    {
+      //Module is not yet valid so return null values...
+      response->print(null);
+    }
+  }
+  response->print("]");
+
+  response->print(comma);
+
+  //exttemp
+  response->print(F("\"exttemp\":["));
+
+  for (uint8_t i = 0; i < totalModules; i++)
+  {
+    //Comma if not zero
+    if (i)
+      response->print(comma);
+
+    if (cmi[i].valid && cmi[i].externalTemp != -40)
+    {
+      response->print(cmi[i].externalTemp);
+    }
+    else
+    {
+      //Module is not yet valid so return null values...
+      response->print(null);
+    }
+  }
+  response->print(']');
+
+  response->print(comma);
+
+  //bypass
+  response->print(F("\"bypass\":["));
+
+  for (uint8_t i = 0; i < totalModules; i++)
+  {
+    //Comma if not zero
+    if (i)
+      response->print(comma);
+
+    if (cmi[i].valid && cmi[i].inBypass)
+    {
+      response->print('1');
+    }
+    else
+    {
+      response->print('0');
+    }
+  }
+  response->print("]");
+
+  response->print(comma);
+
+  //bypasshot
+  response->print(F("\"bypasshot\":["));
+
+  for (uint8_t i = 0; i < totalModules; i++)
+  {
+    //Comma if not zero
+    if (i)
+      response->print(comma);
+
+    if (cmi[i].valid && cmi[i].bypassOverTemp)
+    {
+      response->print('1');
+    }
+    else
+    {
+      response->print('0');
+    }
+  }
+  response->print(']');
+
+  response->print(comma);
+
+  //bypasspwm
+  response->print(F("\"bypasspwm\":["));
+
+  for (uint8_t i = 0; i < totalModules; i++)
+  {
+    //Comma if not zero
+    if (i)
+      response->print(comma);
+
+    if (cmi[i].valid && cmi[i].inBypass)
+    {
+      response->print(cmi[i].PWMValue);
+    }
+    else
+    {
+      response->print('0');
+    }
+  }
+  response->print(']');
+
+  response->print(comma);
+
+  //bypasspwm
+  response->print(F("\"bankv\":["));
+
+  for (uint8_t i = 0; i < mysettings.totalNumberOfBanks; i++)
+  {
+    //Comma if not zero
+    if (i)
+      response->print(comma);
+
+    response->print(rules.packvoltage[i]);
+  }
+  response->print("]");
+
+  response->print(comma);
+
+  //bypasspwm
+  response->print(F("\"voltrange\":["));
+
+  for (uint8_t i = 0; i < mysettings.totalNumberOfBanks; i++)
+  {
+    //Comma if not zero
+    if (i)
+      response->print(comma);
+
+    response->print(rules.VoltageRangeInBank(i));
+  }
+  response->print("]");
+
+  response->print(comma);
+  response->print(F("\"current\":["));
+  response->print(null);
+  response->print("]");
+
+  //The END...
+  response->print('}');
+  request->send(response);
 }
 
 String DIYBMSServer::TemplateProcessor(const String &var)
