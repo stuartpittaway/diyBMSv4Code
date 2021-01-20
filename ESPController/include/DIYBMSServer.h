@@ -35,6 +35,8 @@ private:
     static AsyncWebServer *_myserver;
     static String UUIDString;
 
+    static void PrintStreamComma(AsyncResponseStream *response,const __FlashStringHelper *ifsh, uint32_t value);
+
     static void handleNotFound(AsyncWebServerRequest *request);
     static void monitor2(AsyncWebServerRequest *request);
     static void monitor3(AsyncWebServerRequest *request);

@@ -888,18 +888,30 @@ void DIYBMSServer::monitor3(AsyncWebServerRequest *request)
   request->send(response);
 }
 
+void DIYBMSServer::PrintStreamComma(AsyncResponseStream *response, const __FlashStringHelper *ifsh, uint32_t value)
+{
+  response->print(ifsh);
+  response->print(value);
+  response->print(',');
+}
+
 void DIYBMSServer::monitor2(AsyncWebServerRequest *request)
 {
-  AsyncResponseStream *response = request->beginResponseStream("application/json");
+  uint8_t totalModules = mysettings.totalNumberOfBanks * mysettings.totalNumberOfSeriesModules;
   const char comma = ',';
+  const char *null = "null";
 
-  response->print(F("{\"banks\":"));
-  response->print(mysettings.totalNumberOfBanks);
-  response->print(comma);
+  AsyncResponseStream *response = request->beginResponseStream("application/json");
 
-  response->print(F("\"seriesmodules\":"));
-  response->print(mysettings.totalNumberOfSeriesModules);
-  response->print(comma);
+  PrintStreamComma(response, F("{\"banks\":"), mysettings.totalNumberOfBanks);
+  PrintStreamComma(response, F("\"seriesmodules\":"), mysettings.totalNumberOfSeriesModules);
+  PrintStreamComma(response, F("\"sent\":"), prg.packetsGenerated);
+  PrintStreamComma(response, F("\"received\":"), receiveProc.packetsReceived);
+  PrintStreamComma(response, F("\"modulesfnd\":"), receiveProc.totalModulesFound);
+  PrintStreamComma(response, F("\"badcrc\":"), receiveProc.totalCRCErrors);
+  PrintStreamComma(response, F("\"ignored\":"), receiveProc.totalNotProcessedErrors);
+  PrintStreamComma(response, F("\"roundtrip\":"), receiveProc.packetTimerMillisecond);
+  PrintStreamComma(response, F("\"oos\":"), receiveProc.totalOutofSequenceErrors);
 
   response->print(F("\"errors\":["));
   for (size_t i = 0; i < sizeof(rules.ErrorCodes); i++)
@@ -930,34 +942,7 @@ void DIYBMSServer::monitor2(AsyncWebServerRequest *request)
   }
   response->print("],");
 
-  response->print(F("\"sent\":"));
-  response->print(prg.packetsGenerated);
-  response->print(comma);
-
-  response->print(F("\"received\":"));
-  response->print(receiveProc.packetsReceived);
-  response->print(comma);
-
-  response->print(F("\"modulesfnd\":"));
-  response->print(receiveProc.totalModulesFound);
-  response->print(comma);
-
-  response->print(F("\"badcrc\":"));
-  response->print(receiveProc.totalCRCErrors);
-  response->print(comma);
-
-  response->print(F("\"ignored\":"));
-  response->print(receiveProc.totalNotProcessedErrors);
-  response->print(comma);
-  response->print(F("\"roundtrip\":"));
-  response->print(receiveProc.packetTimerMillisecond);
-  response->print(comma);
-  response->print(F("\"oos\":"));
-  response->print(receiveProc.totalOutofSequenceErrors);
-  response->print(comma);
-
-  uint8_t totalModules = mysettings.totalNumberOfBanks * mysettings.totalNumberOfSeriesModules;
-
+  //voltages
   response->print(F("\"voltages\":["));
 
   for (uint8_t i = 0; i < totalModules; i++)
@@ -973,7 +958,7 @@ void DIYBMSServer::monitor2(AsyncWebServerRequest *request)
     else
     {
       //Module is not yet valid so return null values...
-      response->print("null");
+      response->print(null);
     }
   }
   response->print("],");
@@ -993,7 +978,7 @@ void DIYBMSServer::monitor2(AsyncWebServerRequest *request)
     else
     {
       //Module is not yet valid so return null values...
-      response->print("null");
+      response->print(null);
     }
   }
   response->print("],");
@@ -1015,7 +1000,7 @@ void DIYBMSServer::monitor2(AsyncWebServerRequest *request)
     else
     {
       //Module is not yet valid so return null values...
-      response->print("null");
+      response->print(null);
     }
   }
   response->print("]");
@@ -1038,7 +1023,7 @@ void DIYBMSServer::monitor2(AsyncWebServerRequest *request)
     else
     {
       //Module is not yet valid so return null values...
-      response->print("null");
+      response->print(null);
     }
   }
   response->print("]");
@@ -1061,7 +1046,7 @@ void DIYBMSServer::monitor2(AsyncWebServerRequest *request)
     else
     {
       //Module is not yet valid so return null values...
-      response->print("null");
+      response->print(null);
     }
   }
   response->print(']');
@@ -1083,7 +1068,6 @@ void DIYBMSServer::monitor2(AsyncWebServerRequest *request)
     }
     else
     {
-      //Module is not yet valid so return null values...
       response->print('0');
     }
   }
@@ -1106,11 +1090,10 @@ void DIYBMSServer::monitor2(AsyncWebServerRequest *request)
     }
     else
     {
-      //Module is not yet valid so return null values...
       response->print('0');
     }
   }
-  response->print("]");
+  response->print(']');
 
   response->print(comma);
 
@@ -1129,11 +1112,10 @@ void DIYBMSServer::monitor2(AsyncWebServerRequest *request)
     }
     else
     {
-      //Module is not yet valid so return null values...
       response->print('0');
     }
   }
-  response->print("]");
+  response->print(']');
 
   response->print(comma);
 
@@ -1166,7 +1148,9 @@ void DIYBMSServer::monitor2(AsyncWebServerRequest *request)
   response->print("]");
 
   response->print(comma);
-  response->print(F("\"current\":null"));
+  response->print(F("\"current\":["));
+  response->print(null);
+  response->print("]");
 
   //The END...
   response->print('}');

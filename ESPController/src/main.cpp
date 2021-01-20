@@ -1554,15 +1554,15 @@ void setup()
       mqttClient.setCredentials(mysettings.mqtt_username, mysettings.mqtt_password);
     }
 
-    //Ensure we service the cell modules every 6 or 10 seconds, depending on number of cells being serviced
+    //Ensure we service the cell modules every 5 or 10 seconds, depending on number of cells being serviced
     //slower stops the queues from overflowing when a lot of cells are being monitored
-    myTimer.attach((TotalNumberOfCells() <= maximum_cell_modules_per_packet) ? 6:10, timerEnqueueCallback);
+    myTimer.attach((TotalNumberOfCells() <= maximum_cell_modules_per_packet) ? 5:10, timerEnqueueCallback);
 
     //Process rules every 5 seconds
     myTimerRelay.attach(5, timerProcessRules);
 
     //We process the transmit queue every 1 second (this needs to be lower delay than the queue fills)
-    //and slower than it takes a single module to process a command (about 300ms)
+    //and slower than it takes a single module to process a command (about 200ms @ 2400baud)
     myTransmitTimer.attach(1, timerTransmitCallback);
 
     //Service reply queue
