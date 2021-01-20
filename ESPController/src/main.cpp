@@ -229,7 +229,7 @@ CellModuleInfo cmi[maximum_controller_cell_modules];
 #include "PacketReceiveProcessor.h"
 
 // Instantiate queue to hold packets ready for transmission
-cppQueue requestQueue(sizeof(PacketStruct), 16, FIFO);
+cppQueue requestQueue(sizeof(PacketStruct), 24, FIFO);
 
 cppQueue replyQueue(sizeof(PacketStruct), 8, FIFO);
 
@@ -1285,6 +1285,8 @@ void timerLazyCallback()
   if (requestQueue.getRemainingCount() < 6)
   {
     //Exit here to avoid overflowing the queue
+    SERIAL_DEBUG.print("ERR: Lazy overflow Q=");
+    SERIAL_DEBUG.println(requestQueue.getRemainingCount());
     return;
   }
 
@@ -1294,7 +1296,7 @@ void timerLazyCallback()
   {
     uint8_t counter = 0;
     //Find modules that don't have settings cached and request them
-    for (uint8_t module = 0; module < (TotalNumberOfCells()); module++)
+    for (uint8_t module = 0; module < TotalNumberOfCells(); module++)
     {
       if (cmi[module].valid && !cmi[module].settingsCached)
       {
@@ -1336,26 +1338,26 @@ void timerLazyCallback()
     }
 
     //Need to watch overflow of the uint8 here...
-    prg.sendCellVoltageRequest(startmodule, endmodule);
+    //prg.sendCellVoltageRequest(startmodule, endmodule);
 
     if (lazyTimerMode == 3)
     {
       prg.sendReadBalanceCurrentCountRequest(startmodule, endmodule);
-      return;
+      //return;
     }
 
     if (lazyTimerMode == 4)
     {
       //Just for debug, only do the first 16 modules
       prg.sendReadPacketsReceivedRequest(startmodule, endmodule);
-      return;
+      //return;
     }
 
     //Ask for bad packet count (saves battery power if we dont ask for this all the time)
     if (lazyTimerMode == 5)
     {
       prg.sendReadBadPacketCounter(startmodule, endmodule);
-      return;
+      //return;
     }
 
     //Move to the next bank
@@ -1552,8 +1554,9 @@ void setup()
       mqttClient.setCredentials(mysettings.mqtt_username, mysettings.mqtt_password);
     }
 
-    //Ensure we service the cell modules every 6 seconds
-    myTimer.attach(6, timerEnqueueCallback);
+    //Ensure we service the cell modules every 6 or 10 seconds, depending on number of cells being serviced
+    //slower stops the queues from overflowing when a lot of cells are being monitored
+    myTimer.attach((TotalNumberOfCells() <= maximum_cell_modules_per_packet) ? 6:10, timerEnqueueCallback);
 
     //Process rules every 5 seconds
     myTimerRelay.attach(5, timerProcessRules);
