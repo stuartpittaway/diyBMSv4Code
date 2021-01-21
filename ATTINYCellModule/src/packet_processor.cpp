@@ -336,13 +336,13 @@ bool PacketProcessor::processPacket(PacketStruct *buffer)
 
   case COMMAND::ReadBalanceCurrentCounter:
   {
-    buffer->moduledata[mymoduleaddress] = (uint16_t)MilliAmpHourBalanceCounter;
+    buffer->moduledata[moduledata_index] = (uint16_t)MilliAmpHourBalanceCounter;
     return true;
   }
 
   case COMMAND::ReadPacketReceivedCounter:
   {
-    buffer->moduledata[mymoduleaddress] = PacketReceivedCounter;
+    buffer->moduledata[moduledata_index] = PacketReceivedCounter;
     return true;
   }
 
