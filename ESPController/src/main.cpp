@@ -276,7 +276,7 @@ void dumpByte(uint8_t data)
 }
 void dumpPacketToDebug(char indicator, PacketStruct *buffer)
 {
-  //Filter on some commands
+  //Filter on selected commands
   //if ((buffer->command & 0x0F) != COMMAND::Timing)    return;
 
   SERIAL_DEBUG.print(millis());
@@ -292,45 +292,46 @@ void dumpPacketToDebug(char indicator, PacketStruct *buffer)
   dumpByte(buffer->hops);
   SERIAL_DEBUG.print('/');
   dumpByte(buffer->command);
+  SERIAL_DEBUG.print(' ');
 
+//TODO: Could store these in PROGMEM char array
   switch (buffer->command & 0x0F)
   {
-
   case COMMAND::ResetBadPacketCounter:
-    SERIAL_DEBUG.print(F(" ResetC   "));
+    SERIAL_DEBUG.print(F("ResetC   "));
     break;
   case COMMAND::ReadVoltageAndStatus:
-    SERIAL_DEBUG.print(F(" RdVolt   "));
+    SERIAL_DEBUG.print(F("RdVolt   "));
     break;
   case COMMAND::Identify:
-    SERIAL_DEBUG.print(F(" Ident    "));
+    SERIAL_DEBUG.print(F("Ident    "));
     break;
   case COMMAND::ReadTemperature:
-    SERIAL_DEBUG.print(F(" RdTemp   "));
+    SERIAL_DEBUG.print(F("RdTemp   "));
     break;
   case COMMAND::ReadBadPacketCounter:
-    SERIAL_DEBUG.print(F(" RdBadPkC "));
+    SERIAL_DEBUG.print(F("RdBadPkC "));
     break;
   case COMMAND::ReadSettings:
-    SERIAL_DEBUG.print(F(" RdSettin "));
+    SERIAL_DEBUG.print(F("RdSettin "));
     break;
   case COMMAND::WriteSettings:
-    SERIAL_DEBUG.print(F(" WriteSet "));
+    SERIAL_DEBUG.print(F("WriteSet "));
     break;
   case COMMAND::ReadBalancePowerPWM:
-    SERIAL_DEBUG.print(F(" RdBalanc "));
+    SERIAL_DEBUG.print(F("RdBalanc "));
     break;
   case COMMAND::Timing:
-    SERIAL_DEBUG.print(F(" Timing   "));
+    SERIAL_DEBUG.print(F("Timing   "));
     break;
   case COMMAND::ReadBalanceCurrentCounter:
-    SERIAL_DEBUG.print(F(" Current  "));
+    SERIAL_DEBUG.print(F("Bal mAh  "));
     break;
   case COMMAND::ReadPacketReceivedCounter:
-    SERIAL_DEBUG.print(F(" PktRvd   "));
+    SERIAL_DEBUG.print(F("PktRvd   "));
     break;
   default:
-    SERIAL_DEBUG.print(F(" ??????   "));
+    SERIAL_DEBUG.print(F("??????   "));
     break;
   }
 
@@ -467,10 +468,10 @@ void onPacketReceived()
     SERIAL_DEBUG.println(F("*Failed to queue reply*"));
   }
 
-  //#if defined(PACKET_LOGGING_RECEIVE)
-  // Process decoded incoming packet
-  //dumpPacketToDebug('Q', &ps);
-  //#endif
+//#if defined(PACKET_LOGGING_RECEIVE)
+// Process decoded incoming packet
+//dumpPacketToDebug('Q', &ps);
+//#endif
 
 #if defined(ESP8266)
   hal.GreenLedOff();
@@ -506,7 +507,7 @@ void timerTransmitCallback()
   transmitBuffer.crc = CRC16::CalculateArray((uint8_t *)&transmitBuffer, sizeof(PacketStruct) - 2);
   myPacketSerial.sendBuffer((byte *)&transmitBuffer);
 
-  // Output the packet we just transmitted to debug console
+// Output the packet we just transmitted to debug console
 #if defined(PACKET_LOGGING_SEND)
   dumpPacketToDebug('S', &transmitBuffer);
 #endif
@@ -696,17 +697,17 @@ void timerProcessRules()
   {
     if (previousRelayState[n] != relay[n])
     {
-      //Would be better here to use the WRITE8 to lower i2c traffic
+//Would be better here to use the WRITE8 to lower i2c traffic
 #if defined(RULES_LOGGING)
       SERIAL_DEBUG.print(F("Relay:"));
       SERIAL_DEBUG.print(n);
       SERIAL_DEBUG.print("=");
       SERIAL_DEBUG.print(relay[n]);
 #endif
-      //hal.SetOutputState(n, relay[n]);
+//hal.SetOutputState(n, relay[n]);
 
-      //This would be better if we worked out the bit pattern first and then just
-      //submitted that as a single i2c read/write transaction
+//This would be better if we worked out the bit pattern first and then just
+//submitted that as a single i2c read/write transaction
 
 #if defined(ESP8266)
       hal.SetOutputState(n, relay[n]);
@@ -1294,6 +1295,13 @@ void timerLazyCallback()
 
   if (lazyTimerMode == 1)
   {
+    //Send a "ping" message through the cells to get a round trip time
+    prg.sendTimingRequest();
+    return;
+  }
+
+  if (lazyTimerMode == 2)
+  {
     uint8_t counter = 0;
     //Find modules that don't have settings cached and request them
     for (uint8_t module = 0; module < TotalNumberOfCells(); module++)
@@ -1314,13 +1322,6 @@ void timerLazyCallback()
     return;
   }
 
-  if (lazyTimerMode == 2)
-  {
-    //Send a "ping" message through the cells to get a round trip time
-    prg.sendTimingRequest();
-    return;
-  }
-
   //Send these requests to all banks of modules
   uint16_t i = 0;
   uint16_t max = TotalNumberOfCells();
@@ -1337,35 +1338,28 @@ void timerLazyCallback()
       endmodule = max - 1;
     }
 
-    //Need to watch overflow of the uint8 here...
-    //prg.sendCellVoltageRequest(startmodule, endmodule);
-
-    if (lazyTimerMode == 3)
+    switch (lazyTimerMode)
     {
+    case 3:
       prg.sendReadBalanceCurrentCountRequest(startmodule, endmodule);
-      //return;
-    }
+      break;
 
-    if (lazyTimerMode == 4)
-    {
-      //Just for debug, only do the first 16 modules
+    case 4:
       prg.sendReadPacketsReceivedRequest(startmodule, endmodule);
-      //return;
-    }
+      break;
 
-    //Ask for bad packet count (saves battery power if we dont ask for this all the time)
-    if (lazyTimerMode == 5)
-    {
+    case 5:
       prg.sendReadBadPacketCounter(startmodule, endmodule);
-      //return;
+
+      //This must go on the last action for the lazyTimerMode to reset to zero
+      lazyTimerMode = 0;
+      break;
     }
 
     //Move to the next bank
     startmodule = endmodule + 1;
     i += maximum_cell_modules_per_packet;
   }
-
-  lazyTimerMode = 0;
 }
 
 void resetAllRules()
@@ -1383,11 +1377,11 @@ void setup()
 #if defined(ESP32)
   btStop();
   esp_log_level_set("*", ESP_LOG_WARN); // set all components to WARN level
-  //esp_log_level_set("wifi", ESP_LOG_WARN);      // enable WARN logs from WiFi stack
-  //esp_log_level_set("dhcpc", ESP_LOG_WARN);     // enable INFO logs from DHCP client
+//esp_log_level_set("wifi", ESP_LOG_WARN);      // enable WARN logs from WiFi stack
+//esp_log_level_set("dhcpc", ESP_LOG_WARN);     // enable INFO logs from DHCP client
 #endif
 
-  //Debug serial output
+//Debug serial output
 #if defined(ESP8266)
   //ESP8266 uses dedicated 2nd serial port, but transmit only
   SERIAL_DEBUG.begin(115200, SERIAL_8N1, SERIAL_TX_ONLY);
@@ -1531,7 +1525,7 @@ void setup()
 
     SERIAL_DEBUG.println(F("Connecting to WIFI"));
 
-    /* Explicitly set the ESP8266 to be a WiFi-client, otherwise by default,
+/* Explicitly set the ESP8266 to be a WiFi-client, otherwise by default,
       would try to act as both a client and an access-point */
 
 #if defined(ESP8266)
@@ -1556,7 +1550,7 @@ void setup()
 
     //Ensure we service the cell modules every 5 or 10 seconds, depending on number of cells being serviced
     //slower stops the queues from overflowing when a lot of cells are being monitored
-    myTimer.attach((TotalNumberOfCells() <= maximum_cell_modules_per_packet) ? 5:10, timerEnqueueCallback);
+    myTimer.attach((TotalNumberOfCells() <= maximum_cell_modules_per_packet) ? 5 : 10, timerEnqueueCallback);
 
     //Process rules every 5 seconds
     myTimerRelay.attach(5, timerProcessRules);
