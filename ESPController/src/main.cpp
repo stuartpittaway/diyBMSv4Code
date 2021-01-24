@@ -95,7 +95,6 @@ uint16_t ConfigHasChanged = 0;
 
 uint16_t TotalNumberOfCells() { return mysettings.totalNumberOfBanks * mysettings.totalNumberOfSeriesModules; }
 
-
 bool server_running = false;
 RelayState previousRelayState[RELAY_TOTAL];
 bool previousRelayPulse[RELAY_TOTAL];
@@ -113,7 +112,6 @@ AsyncWebServer server(80);
 TaskHandle_t i2c_task_handle;
 TaskHandle_t ledoff_task_handle;
 QueueHandle_t queue_i2c;
-
 
 void QueueLED(uint8_t bits)
 {
@@ -294,7 +292,7 @@ void dumpPacketToDebug(char indicator, PacketStruct *buffer)
   dumpByte(buffer->command);
   SERIAL_DEBUG.print(' ');
 
-//TODO: Could store these in PROGMEM char array
+  //TODO: Could store these in PROGMEM char array
   switch (buffer->command & 0x0F)
   {
   case COMMAND::ResetBadPacketCounter:
@@ -468,10 +466,10 @@ void onPacketReceived()
     SERIAL_DEBUG.println(F("*Failed to queue reply*"));
   }
 
-//#if defined(PACKET_LOGGING_RECEIVE)
-// Process decoded incoming packet
-//dumpPacketToDebug('Q', &ps);
-//#endif
+  //#if defined(PACKET_LOGGING_RECEIVE)
+  // Process decoded incoming packet
+  //dumpPacketToDebug('Q', &ps);
+  //#endif
 
 #if defined(ESP8266)
   hal.GreenLedOff();
@@ -704,10 +702,10 @@ void timerProcessRules()
       SERIAL_DEBUG.print("=");
       SERIAL_DEBUG.print(relay[n]);
 #endif
-//hal.SetOutputState(n, relay[n]);
+      //hal.SetOutputState(n, relay[n]);
 
-//This would be better if we worked out the bit pattern first and then just
-//submitted that as a single i2c read/write transaction
+      //This would be better if we worked out the bit pattern first and then just
+      //submitted that as a single i2c read/write transaction
 
 #if defined(ESP8266)
       hal.SetOutputState(n, relay[n]);
@@ -1350,15 +1348,18 @@ void timerLazyCallback()
 
     case 5:
       prg.sendReadBadPacketCounter(startmodule, endmodule);
-
-      //This must go on the last action for the lazyTimerMode to reset to zero
-      lazyTimerMode = 0;
       break;
     }
 
     //Move to the next bank
     startmodule = endmodule + 1;
     i += maximum_cell_modules_per_packet;
+  }
+
+  if (lazyTimerMode >= 5)
+  {
+    //This must go on the last action for the lazyTimerMode to reset to zero
+    lazyTimerMode = 0;
   }
 }
 
@@ -1525,7 +1526,7 @@ void setup()
 
     SERIAL_DEBUG.println(F("Connecting to WIFI"));
 
-/* Explicitly set the ESP8266 to be a WiFi-client, otherwise by default,
+    /* Explicitly set the ESP8266 to be a WiFi-client, otherwise by default,
       would try to act as both a client and an access-point */
 
 #if defined(ESP8266)
