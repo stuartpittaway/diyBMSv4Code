@@ -12,8 +12,8 @@ enum Rule : uint8_t
     BMSError = 1,
     Individualcellovervoltage = 2,
     Individualcellundervoltage = 3,
-    IndividualcellovertemperatureInternal = 4,
-    IndividualcellundertemperatureInternal = 5,
+    ModuleOverTemperatureInternal = 4,
+    ModuleUnderTemperatureInternal = 5,
     IndividualcellovertemperatureExternal = 6,
     IndividualcellundertemperatureExternal = 7,
     PackOverVoltage = 8,
@@ -29,7 +29,8 @@ enum InternalWarningCode : uint8_t
     ModuleInconsistantBypassVoltage = 1,
     ModuleInconsistantBypassTemperature = 2,
     ModuleInconsistantCodeVersion = 3,
-    ModuleInconsistantBoardRevision = 4
+    ModuleInconsistantBoardRevision = 4,
+    LoggingEnabledNoSDCard=5
 };
 
 enum InternalErrorCode : uint8_t

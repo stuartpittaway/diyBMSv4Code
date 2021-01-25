@@ -3,7 +3,8 @@ const INTERNALWARNINGCODE = {
     ModuleInconsistantBypassVoltage: 1,
     ModuleInconsistantBypassTemperature: 2,
     ModuleInconsistantCodeVersion: 3,
-    ModuleInconsistantBoardRevision: 4
+    ModuleInconsistantBoardRevision: 4,
+    LoggingEnabledNoSDCard: 5
 }
 Object.freeze(INTERNALWARNINGCODE);
 
@@ -45,7 +46,7 @@ function configureModule(button, cellid, attempts) {
 
                 //Populate settings div
                 $('#ModuleId').val(data.settings.id);
-                $('#Version').val(data.settings.ver.toString() + '/' + data.settings.code.toString(16));
+                $('#Version').html(data.settings.ver.toString() + ' / <a href="https://github.com/stuartpittaway/diyBMSv4Code/commit/' + data.settings.code.toString(16) + '" rel="noreferrer" target="_blank">' + data.settings.code.toString(16) + '</a>');
                 $('#BypassOverTempShutdown').val(data.settings.BypassOverTempShutdown);
                 $('#BypassThresholdmV').val(data.settings.BypassThresholdmV);
                 $('#Calib').val(data.settings.Calib.toFixed(4));
@@ -82,7 +83,6 @@ function queryBMS() {
         var tempint = [];
         var tempext = [];
         var pwm = [];
-
 
         var minVoltage = DEFAULT_GRAPH_MIN_VOLTAGE;
         var maxVoltage = DEFAULT_GRAPH_MAX_VOLTAGE;
@@ -192,25 +192,29 @@ function queryBMS() {
         }
 
         //Needs increasing when more warnings are added
-        for (let warning = 1; warning <= 4; warning++) {
-            if (jsondata.warnings.includes(warning)) {
-                $("#warning" + warning).show();
-            } else {
-                $("#warning" + warning).hide();
+        if (jsondata.warnings) {
+            for (let warning = 1; warning <= 5; warning++) {
+                if (jsondata.warnings.includes(warning)) {
+                    $("#warning" + warning).show();
+                } else {
+                    $("#warning" + warning).hide();
+                }
             }
         }
 
         //Needs increasing when more errors are added
-        for (let error = 1; error <= 6; error++) {
-            if (jsondata.errors.includes(error)) {
-                $("#error" + error).show();
+        if (jsondata.errors) {
+            for (let error = 1; error <= 6; error++) {
+                if (jsondata.errors.includes(error)) {
+                    $("#error" + error).show();
 
-                if (error == INTERNALERRORCODE.ModuleCountMismatch) {
-                    $("#missingmodule1").html(jsondata.modulesfnd);
-                    $("#missingmodule2").html(jsondata.banks * jsondata.seriesmodules);
+                    if (error == INTERNALERRORCODE.ModuleCountMismatch) {
+                        $("#missingmodule1").html(jsondata.modulesfnd);
+                        $("#missingmodule2").html(jsondata.banks * jsondata.seriesmodules);
+                    }
+                } else {
+                    $("#error" + error).hide();
                 }
-            } else {
-                $("#error" + error).hide();
             }
         }
 
@@ -260,7 +264,7 @@ function queryBMS() {
                 //$(columns[10]).html(balcurrent[index]);
             });
 
-            //As the module page is open, we refresh the last 3 columns using seperate JSON web service to keep the monitor2.json 
+            //As the module page is open, we refresh the last 3 columns using seperate JSON web service to keep the monitor2.json
             //packets as small as possible
 
 
@@ -905,6 +909,76 @@ $(function () {
 
         return true;
     });
+
+
+    $("#mount").click(function () {
+        $.ajax({
+            type: 'post',
+            url: 'sdmount.json',
+            data: 'mount=1',
+            success: function (data) {
+                //Refresh the storage page
+                $("#storage").trigger("click");
+            },
+            error: function (data) {
+                $("#saveerror").show().delay(2000).fadeOut(500);
+            },
+        });
+    });
+
+    $("#unmount").click(function () {
+        $.ajax({
+            type: 'post',
+            url: 'sdunmount.json',
+            data: 'unmount=1',
+            success: function (data) {
+                //Refresh the storage page
+                $("#storage").trigger("click");
+            },
+            error: function (data) {
+                $("#saveerror").show().delay(2000).fadeOut(500);
+            },
+        });
+    });
+
+
+    $("#storage").click(function () {
+        $(".header-right a").removeClass("active");
+        $(this).addClass("active");
+        $(".page").hide();
+        $("#storagePage").show();
+
+        $.getJSON("storage.json",
+            function (data) {
+                $("#loggingEnabled").prop("checked", data.storage.enabled);
+                $("#loggingFreq").val(data.storage.frequency);
+
+                if (data.storage.sdcard) {
+                    $("#sdcardmissing").hide();
+                } else { $("#sdcardmissing").show(); }
+
+                $("#sdcard_total").html(Number(data.storage.sdcard_total).toLocaleString());
+                $("#sdcard_used").html(Number(data.storage.sdcard_used).toLocaleString());
+
+                if (data.storage.sdcard_total > 0) {
+                    $("#sdcard_used_percent").html(((data.storage.sdcard_used / data.storage.sdcard_total) * 100).toFixed(1));
+                }
+                else { $("#sdcard_used_percent").html("0"); }
+
+                $("#flash_total").html(Number(data.storage.flash_total).toLocaleString());
+                $("#flash_used").html(Number(data.storage.flash_used).toLocaleString());
+
+                if (data.storage.flash_total > 0) {
+                    $("#flash_used_percent").html(((data.storage.flash_used / data.storage.flash_total) * 100).toFixed(1));
+                }
+                else { $("#flash_used_percent").html("0"); }
+
+            }).fail(function () { }
+            );
+
+        return true;
+    });
+
 
     $("form").unbind('submit').submit(function (e) {
         e.preventDefault();
