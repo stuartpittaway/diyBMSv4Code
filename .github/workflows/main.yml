@@ -38,9 +38,9 @@ jobs:
       with:
         name: DIYBMS-Compiled-Module
         path: |
-          ./ATTINYCellModule/.pio/build/attiny841_V*/*.hex
-          ./ATTINYCellModule/.pio/build/attiny841_V*/*.elf
-        if-no-files-found: error      
+          ./ATTINYCellModule/.pio/build/V*/*.hex
+          ./ATTINYCellModule/.pio/build/V*/*.elf
+        if-no-files-found: error
 
 
   job_build_controller_esp8266:
@@ -110,7 +110,7 @@ jobs:
       run: |
         zip --junk-paths release.zip ./esp8266_d1mini/diybms_controller_firmware_espressif8266_esp8266_d1mini.bin
         zip --junk-paths release.zip ./esp8266_d1mini/diybms_controller_filesystemimage_espressif8266_esp8266_d1mini.bin
-        zip --junk-paths release.zip ./attiny841_V*/*.hex
+        zip --junk-paths release.zip ./V*/*.hex
 
     - name: Get current date
       id: date
