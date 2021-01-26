@@ -55,7 +55,7 @@ You will need to determine which file to use for the module boards (see "Identif
 
 ## Programming the controller
 
-Both [Wemos D1 Mini](https://amzn.to/3i1gPIz) and Wemos D1 Mini Pro are supported - minimum of 4MB flash memory, ESP32 version coming soon.
+Both [Wemos D1 Mini](https://amzn.to/3i1gPIz) and Wemos D1 Mini & Pro are supported - minimum of 4MB flash memory, ESP32 version coming soon.
 
 1. Connect the WEMOS D1 to the computer using a USB cable
 1. Download the [esphome-flasher](https://github.com/esphome/esphome-flasher/releases) tool for your operating system
