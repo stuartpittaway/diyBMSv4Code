@@ -27,11 +27,11 @@ https://creativecommons.org/licenses/by-nc-sa/2.0/uk/
 #include <ArduinoJson.h>
 #include "FS.h"
 
-#if defined(ESP8266)
+
 #include "ESP8266TrueRandom.h"
 #include <TimeLib.h>
 #include <LittleFS.h>
-#endif
+
 
 #include "defines.h"
 #include "DIYBMSServer.h"
@@ -82,9 +82,9 @@ void DIYBMSServer::generateUUID()
 {
   //SERIAL_DEBUG.print("generateUUID=");
   byte uuidNumber[16]; // UUIDs in binary form are 16 bytes long
-#if defined(ESP8266)
+
   ESP8266TrueRandom.uuid(uuidNumber);
-#endif
+
 
 
   UUIDString = uuidToString(uuidNumber);

@@ -811,8 +811,8 @@ void onWifiConnect(WiFiEvent_t event, WiFiEventInfo_t info)
   SERIAL_DEBUG.print(F("Request NTP from "));
   SERIAL_DEBUG.println(mysettings.ntpServer);
 
-  //Update time every 10 minutes
-  NTP.setInterval(600);
+  //Update time every 20 minutes
+  NTP.setInterval(1200);
   NTP.setNTPTimeout(NTP_TIMEOUT);
   // String ntpServerName, int8_t timeZone, bool daylight, int8_t minutes, AsyncUDP* udp_conn
   NTP.begin(mysettings.ntpServer, mysettings.timeZone, mysettings.daylight, mysettings.minutesTimeZone);
@@ -1389,15 +1389,9 @@ void setup()
 
   hal.ConfigurePins();
 
-#if defined(ESP8266)
   hal.ConfigureI2C(ExternalInputInterrupt);
-#endif
 
-  //Pretend the button is not pressed
-  uint8_t clearAPSettings = 0xFF;
-  //Fix for issue 5, delay for 3 seconds on power up with green LED lit so
-  //people get chance to jump WIFI reset pin (d3)
-  hal.GreenLedOn();
+
 
   //Pre configure the array
   memset(&cmi, 0, sizeof(cmi));
@@ -1416,8 +1410,12 @@ void setup()
 
   LoadConfiguration();
 
+  //Force logging off for ESP8266
+  mysettings.loggingEnabled=false;
+
   InputsEnabled = hal.InputsEnabled;
   OutputsEnabled = hal.OutputsEnabled;
+
 
   //Set relay defaults
   for (int8_t y = 0; y < RELAY_TOTAL; y++)
@@ -1426,6 +1424,12 @@ void setup()
     //Set relay defaults
     hal.SetOutputState(y, mysettings.rulerelaydefault[y]);
   }
+
+  //Pretend the button is not pressed
+  uint8_t clearAPSettings = 0xFF;
+  //Fix for issue 5, delay for 3 seconds on power up with green LED lit so
+  //people get chance to jump WIFI reset pin (d3)
+  hal.GreenLedOn();
 
   SERIAL_DATA.begin(115200, SERIAL_8N1); // Serial for comms to modules
 
