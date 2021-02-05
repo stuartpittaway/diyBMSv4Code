@@ -29,9 +29,8 @@ IMPORTANT
 You need to configure the correct DIYBMSMODULEVERSION in defines.h file to build for your module
 
 ATTINY chip frequency dropped to 2Mhz to comply with datasheet at low voltages (<2V)
-Baud rate changed to 5000bits/second from 26 Jan 2021, 5000 chosen due to 2Mhz frequency and ATTINY bad freq regulation
-https://trolsoft.ru/en/uart-calc
 
+https://trolsoft.ru/en/uart-calc
 */
 
 #define RX_BUFFER_SIZE 64

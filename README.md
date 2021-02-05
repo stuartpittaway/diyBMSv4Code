@@ -139,7 +139,7 @@ Programming the module takes around 12 seconds.
 1. Now we shall program the module, run the command line similar to below, replacing the "diybms_module_firmware_400" filename where applicable.
 1. The fuse settings are important, and are in the filename for example "eF4_hD6_l62" - means efuse=0xF4, hfuse=0xD6, lfuse=0x62
 ```
-avrdude -C avrdude.conf -P usb -c usbasp -p t841 -e -B 8 -U efuse:w:0xF4:m -U hfuse:w:0xD6:m -U lfuse:w:0xE2:m -U flash:w:diybms_module_firmware_400.hex:i
+avrdude -C avrdude.conf -P usb -c usbasp -p t841 -e -B 8 -U efuse:w:0xF4:m -U hfuse:w:0xD6:m -U lfuse:w:0x62:m -U flash:w:diybms_module_firmware_400.hex:i
 ```
 it should output
 ```
