@@ -7,7 +7,7 @@
 DIYBMS V4.0
 CELL MODULE FOR ATTINY841
 
-(c)2019/2020 Stuart Pittaway
+(c)2019 to 2021 Stuart Pittaway
 
 COMPILE THIS CODE USING PLATFORM.IO
 
@@ -28,19 +28,27 @@ IMPORTANT
 
 You need to configure the correct DIYBMSMODULEVERSION in defines.h file to build for your module
 
+ATTINY chip frequency dropped to 2Mhz to comply with datasheet at low voltages (<2V)
+
+https://trolsoft.ru/en/uart-calc
 */
 
 #define RX_BUFFER_SIZE 64
 
 #include <Arduino.h>
 
-#if !(F_CPU == 8000000)
-#error Processor speed should be 8 Mhz internal
+#if !(F_CPU == 2000000)
+#error Processor speed should be 2Mhz
 #endif
 
 #if !defined(ATTINY_CORE)
 #error Expected ATTINYCORE
 #endif
+
+#if !defined(BAUD)
+#error Expected BAUD define
+#endif
+
 
 //Our project code includes
 #include "defines.h"
@@ -197,6 +205,14 @@ void setup()
   wdt_disable();
   wdt_reset();
 
+  //Boot up will be in 1Mhz CKDIV8 mode, swap to /4 to change speed to 2Mhz
+  //CCP – Configuration Change Protection Register
+  CCP = 0xD8;
+  //CLKPR – Clock Prescale Register  
+  CLKPR = _BV(CLKPS1);
+
+  //below 2Mhz is required for running ATTINY at low voltages (less than 2V)
+
   //8 second between watchdogs
   DiyBMSATTiny841::SetWatchdog8sec();
 
@@ -230,7 +246,7 @@ void setup()
   StopBalance();
 
   //Set up data handler
-  Serial.begin(COMMS_BAUD_RATE, SERIAL_8N1);
+  Serial.begin(BAUD, SERIAL_8N1);
 
   myPacketSerial.begin(&Serial, &onPacketReceived, sizeof(PacketStruct), SerialPacketReceiveBuffer, sizeof(SerialPacketReceiveBuffer));
 }

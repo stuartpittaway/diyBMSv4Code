@@ -9,16 +9,9 @@
 
   This is the code for the controller - it talks to the V4.X cell modules over isolated serial bus
 
-  This code runs on ESP-8266 WEMOS D1 PRO and compiles with VS CODE and PLATFORM IO environment
+  This code runs on ESP-8266 WEMOS D1 (Mini or Pro) and compiles with VS CODE and PLATFORM IO environment
 */
-/*
-*** NOTE IF YOU GET ISSUES WHEN COMPILING IN PLATFORM.IO ***
-ERROR: "ESP Async WebServer\src\WebHandlers.cpp:67:64: error: 'strftime' was not declared in this scope"
-Delete the file <project folder>\diyBMSv4\ESPController\.pio\libdeps\esp8266_d1minipro\Time\Time.h
-The Time.h file in this library conflicts with the time.h file in the ESP core platform code
 
-See reasons why here https://github.com/me-no-dev/ESPAsyncWebServer/issues/60
-*/
 /*
    ESP8266 PINS
    D0 = GREEN_LED
@@ -30,11 +23,7 @@ See reasons why here https://github.com/me-no-dev/ESPAsyncWebServer/issues/60
    D7 = GPIO13 = RECEIVE SERIAL
    D8 = GPIO15 = TRANSMIT SERIAL
 
-   DIAGRAM
-   https://www.hackster.io/Aritro/getting-started-with-esp-nodemcu-using-arduinoide-aa7267
 */
-
-// PacketSerial library takes 1691ms round trip with 8 modules, 212ms per module @ 2400baud
 
 #include <Arduino.h>
 
@@ -46,23 +35,13 @@ See reasons why here https://github.com/me-no-dev/ESPAsyncWebServer/issues/60
 #include "FS.h"
 
 //Libraries just for ESP8266
-#if defined(ESP8266)
+
 #include <TimeLib.h>
 #include <ESP8266WiFi.h>
 #include <NtpClientLib.h>
 #include <LittleFS.h>
-#endif
+#include <ESP8266mDNS.h>
 
-//Libraries just for ESP32
-#if defined(ESP32)
-#include <SPIFFS.h>
-#include <WiFi.h>
-#include <SPI.h>
-#include "time.h"
-#include <esp_wifi.h>
-#endif
-
-//Shared libraries across processors
 #include <Ticker.h>
 #include <ESPAsyncWebServer.h>
 #include <AsyncMqttClient.h>
@@ -73,23 +52,16 @@ See reasons why here https://github.com/me-no-dev/ESPAsyncWebServer/issues/60
 
 #include <ArduinoOTA.h>
 
-#if defined(ESP8266)
 #include "HAL_ESP8266.h"
 HAL_ESP8266 hal;
-#endif
-
-#if defined(ESP32)
-#include "HAL_ESP32.h"
-HAL_ESP32 hal;
-#endif
 
 #include "Rules.h"
 
 volatile bool emergencyStop = false;
-volatile bool WifiDisconnected = true;
 
 Rules rules;
 
+bool _sd_card_installed = false;
 diybms_eeprom_settings mysettings;
 uint16_t ConfigHasChanged = 0;
 
@@ -101,109 +73,11 @@ bool previousRelayPulse[RELAY_TOTAL];
 
 volatile enumInputState InputState[INPUTS_TOTAL];
 
-#if defined(ESP8266)
 bool NTPsyncEventTriggered = false; // True if a time even has been triggered
 NTPSyncEvent_t ntpEvent;            // Last triggered event
-#endif
 
 AsyncWebServer server(80);
 
-#if defined(ESP32)
-TaskHandle_t i2c_task_handle;
-TaskHandle_t ledoff_task_handle;
-QueueHandle_t queue_i2c;
-
-void QueueLED(uint8_t bits)
-{
-  i2cQueueMessage m;
-  //3 = LED
-  m.command = 0x03;
-  //Lowest 3 bits are RGB led GREEN/RED/BLUE
-  m.data = bits & B00000111;
-  xQueueSendToBack(queue_i2c, &m, 10 / portTICK_PERIOD_MS);
-}
-
-void ledoff_task(void *param)
-{
-  while (true)
-  {
-    //Wait until this task is triggered https://www.freertos.org/ulTaskNotifyTake.html
-    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-    //Wait 60ms
-    vTaskDelay(60 / portTICK_PERIOD_MS);
-    //LED OFF
-    QueueLED(RGBLED::OFF);
-  }
-}
-
-// Handle all calls to i2c devices in this single task
-// Provides thread safe mechanism to talk to i2c
-void i2c_task(void *param)
-{
-  while (true)
-  {
-    i2cQueueMessage m;
-
-    if (xQueueReceive(queue_i2c, &m, portMAX_DELAY) == pdPASS)
-    {
-      // do some i2c task
-      if (m.command == 0x01)
-      {
-        // Read ports A/B inputs (on TCA6408)
-        uint8_t v = hal.ReadTCA6408InputRegisters();
-        InputState[0] = (v & B00000001) == 0 ? enumInputState::INPUT_LOW : enumInputState::INPUT_HIGH;
-        InputState[1] = (v & B00000010) == 0 ? enumInputState::INPUT_LOW : enumInputState::INPUT_HIGH;
-
-        //Emergency Stop (J1) has triggered
-        if (InputState[0] == enumInputState::INPUT_HIGH)
-        {
-          emergencyStop = true;
-        }
-      }
-
-      if (m.command == 0x02)
-      {
-        //Read ports
-        //The 9534 deals with internal LED outputs and spare IO on J10
-        //P5/P6/P7 = EXTRA I/O (on internal header breakout pins J10)
-        uint8_t v = hal.ReadTCA9534InputRegisters();
-        InputState[2] = (v & B00100000) == 0 ? enumInputState::INPUT_LOW : enumInputState::INPUT_HIGH;
-        InputState[3] = (v & B01000000) == 0 ? enumInputState::INPUT_LOW : enumInputState::INPUT_HIGH;
-        InputState[4] = (v & B10000000) == 0 ? enumInputState::INPUT_LOW : enumInputState::INPUT_HIGH;
-      }
-
-      if (m.command == 0x03)
-      {
-        hal.Led(m.data);
-      }
-
-      if (m.command >= 0xE0 && m.command <= 0xE0 + RELAY_TOTAL)
-      {
-        //Set state of relays
-        hal.SetOutputState(m.command - 0xe0, (RelayState)m.data);
-      }
-    }
-  }
-}
-
-void IRAM_ATTR TCA6408Interrupt()
-{
-  i2cQueueMessage m;
-  m.command = 0x01;
-  m.data = 0;
-  xQueueSendToBackFromISR(queue_i2c, &m, NULL);
-}
-
-void IRAM_ATTR TCA9534AInterrupt()
-{
-  i2cQueueMessage m;
-  m.command = 0x02;
-  m.data = 0;
-  xQueueSendToBackFromISR(queue_i2c, &m, NULL);
-}
-#endif
-
-#if defined(ESP8266)
 void IRAM_ATTR ExternalInputInterrupt()
 {
   if ((hal.ReadInputRegisters() & B00010000) == 0)
@@ -212,7 +86,6 @@ void IRAM_ATTR ExternalInputInterrupt()
     emergencyStop = true;
   }
 }
-#endif
 
 //This large array holds all the information about the modules
 //up to 4x16
@@ -240,10 +113,8 @@ uint8_t SerialPacketReceiveBuffer[2 * sizeof(PacketStruct)];
 
 SerialEncoder myPacketSerial;
 
-#if defined(ESP8266)
 WiFiEventHandler wifiConnectHandler;
 WiFiEventHandler wifiDisconnectHandler;
-#endif
 
 Ticker myTimerRelay;
 Ticker myTimer;
@@ -259,7 +130,7 @@ Ticker myTimerSwitchPulsedRelay;
 
 uint16_t sequence = 0;
 
-ControllerState ControlState;
+ControllerState ControlState = ControllerState::Unknown;
 
 bool OutputsEnabled;
 bool InputsEnabled;
@@ -349,6 +220,25 @@ void dumpPacketToDebug(char indicator, PacketStruct *buffer)
   SERIAL_DEBUG.println();
 }
 
+const char *ControllerStateString(ControllerState value)
+{
+  switch (value)
+  {
+  case ControllerState::PowerUp:
+    return "PowerUp";
+  case ControllerState::ConfigurationSoftAP:
+    return "ConfigurationSoftAP";
+  case ControllerState::Stabilizing:
+    return "Stabilizing";
+  case ControllerState::Running:
+    return "Running";
+  case ControllerState::Unknown:
+    return "Unknown";
+  }
+
+  return "?";
+}
+
 void SetControllerState(ControllerState newState)
 {
   if (ControlState != newState)
@@ -357,57 +247,43 @@ void SetControllerState(ControllerState newState)
 
     SERIAL_DEBUG.println("");
     SERIAL_DEBUG.print(F("** Controller changed to state = "));
-    SERIAL_DEBUG.println(newState, HEX);
+    SERIAL_DEBUG.println(ControllerStateString(newState));
   }
 }
 
 uint16_t minutesSinceMidnight()
 {
 
-#if defined(ESP8266)
   return (hour() * 60) + minute();
-#endif
-
-#if defined(ESP32)
-  struct tm timeinfo;
-  if (!getLocalTime(&timeinfo))
-  {
-    return 0;
-  }
-  else
-  {
-    return (timeinfo.tm_hour * 60) + timeinfo.tm_min;
-  }
-#endif
 }
 
-#if defined(ESP8266)
 void processSyncEvent(NTPSyncEvent_t ntpEvent)
 {
   if (ntpEvent < 0)
   {
     SERIAL_DEBUG.printf("Time Sync error: %d\n", ntpEvent);
+    /*
     if (ntpEvent == noResponse)
-      SERIAL_DEBUG.println(F("NTP server not reachable"));
+      SERIAL_DEBUG.println(F("NTP svr not reachable"));
     else if (ntpEvent == invalidAddress)
-      SERIAL_DEBUG.println(F("Invalid NTP server address"));
+      SERIAL_DEBUG.println(F("Invalid NTP svr address"));
     else if (ntpEvent == errorSending)
       SERIAL_DEBUG.println(F("Error sending request"));
     else if (ntpEvent == responseError)
       SERIAL_DEBUG.println(F("NTP response error"));
+      */
   }
   else
   {
     if (ntpEvent == timeSyncd)
     {
-      SERIAL_DEBUG.print(F("Got NTP time"));
+      SERIAL_DEBUG.print(F("NTP time "));
       time_t lastTime = NTP.getLastNTPSync();
       SERIAL_DEBUG.println(NTP.getTimeDateString(lastTime));
       setTime(lastTime);
     }
   }
 }
-#endif
 
 void serviceReplyQueue()
 {
@@ -429,10 +305,6 @@ void serviceReplyQueue()
     }
     else
     {
-#if defined(ESP32)
-      //Error blue
-      QueueLED(RGBLED::Blue);
-#endif
       SERIAL_DEBUG.print(F("*FAIL*"));
       dumpPacketToDebug('F', &ps);
     }
@@ -441,12 +313,8 @@ void serviceReplyQueue()
 
 void onPacketReceived()
 {
-#if defined(ESP8266)
+
   hal.GreenLedOn();
-#endif
-#if defined(ESP32)
-  QueueLED(RGBLED::Green);
-#endif
 
   PacketStruct ps;
   memcpy(&ps, SerialPacketReceiveBuffer, sizeof(PacketStruct));
@@ -471,13 +339,7 @@ void onPacketReceived()
   //dumpPacketToDebug('Q', &ps);
   //#endif
 
-#if defined(ESP8266)
   hal.GreenLedOff();
-#endif
-#if defined(ESP32)
-  //Fire task to switch off LED in a few ms
-  xTaskNotify(ledoff_task_handle, 0x00, eNotifyAction::eNoAction);
-#endif
 }
 
 void timerTransmitCallback()
@@ -485,8 +347,8 @@ void timerTransmitCallback()
   if (requestQueue.isEmpty())
     return;
 
-  // Called to transmit the next packet in the queue need to ensure this procedure is called more frequently than
-  // items are added into the queue
+  // Called to transmit the next packet in the queue need to ensure this procedure
+  // is called more frequently than items are added into the queue
 
   PacketStruct transmitBuffer;
 
@@ -578,6 +440,11 @@ void ProcessRules()
     rules.ProcessBank(bank);
   }
 
+  if (mysettings.loggingEnabled && !_sd_card_installed)
+  {
+    rules.SetWarning(InternalWarningCode::LoggingEnabledNoSDCard);
+  }
+
   if (rules.invalidModuleCount > 0)
   {
     //Some modules are not yet valid
@@ -604,14 +471,6 @@ void ProcessRules()
       SetControllerState(ControllerState::Running);
     }
   }
-
-#if defined(ESP32)
-  if (emergencyStop)
-  {
-    //Lowest 3 bits are RGB led GREEN/RED/BLUE
-    QueueLED(RGBLED::Red);
-  }
-#endif
 }
 
 void timerSwitchPulsedRelay()
@@ -621,20 +480,11 @@ void timerSwitchPulsedRelay()
   {
     if (previousRelayPulse[y])
     {
-//We now need to rapidly turn off the relay after a fixed period of time (pulse mode)
-//However we leave the relay and previousRelayState looking like the relay has triggered (it has!)
-//to prevent multiple pulses being sent on each rule refresh
-#if defined(ESP8266)
-      hal.SetOutputState(y, previousRelayState[y] == RelayState::RELAY_ON ? RelayState::RELAY_OFF : RelayState::RELAY_ON);
-#endif
+      //We now need to rapidly turn off the relay after a fixed period of time (pulse mode)
+      //However we leave the relay and previousRelayState looking like the relay has triggered (it has!)
+      //to prevent multiple pulses being sent on each rule refresh
 
-#if defined(ESP32)
-      i2cQueueMessage m;
-      //Different command for each relay
-      m.command = 0xE0 + y;
-      m.data = previousRelayState[y] == RelayState::RELAY_ON ? RelayState::RELAY_OFF : RelayState::RELAY_ON;
-      xQueueSendToBack(queue_i2c, &m, 10 / portTICK_PERIOD_MS);
-#endif
+      hal.SetOutputState(y, previousRelayState[y] == RelayState::RELAY_ON ? RelayState::RELAY_OFF : RelayState::RELAY_ON);
 
       previousRelayPulse[y] = false;
     }
@@ -707,17 +557,7 @@ void timerProcessRules()
       //This would be better if we worked out the bit pattern first and then just
       //submitted that as a single i2c read/write transaction
 
-#if defined(ESP8266)
       hal.SetOutputState(n, relay[n]);
-#endif
-
-#if defined(ESP32)
-      i2cQueueMessage m;
-      //Different command for each relay
-      m.command = 0xE0 + n;
-      m.data = relay[n];
-      xQueueSendToBack(queue_i2c, &m, 10 / portTICK_PERIOD_MS);
-#endif
 
       previousRelayState[n] = relay[n];
 
@@ -778,34 +618,45 @@ void timerEnqueueCallback()
 
 void connectToWifi()
 {
-  if (WiFi.status() != WL_CONNECTED)
+  wl_status_t status = WiFi.status();
+  if (status == WL_CONNECTED)
   {
-    //SERIAL_DEBUG.println(F("Configuring Wi-Fi STA..."));
-    WiFi.mode(WIFI_STA);
-
-    char hostname[40];
-
-#if defined(ESP8266)
-    sprintf(hostname, "DIYBMS-%08X", ESP.getChipId());
-    wifi_station_set_hostname(hostname);
-    WiFi.hostname(hostname);
-#endif
-#if defined(ESP32)
-    uint32_t chipId = 0;
-    for (int i = 0; i < 17; i = i + 8)
-    {
-      chipId |= ((ESP.getEfuseMac() >> (40 - i)) & 0xff) << i;
-    }
-    sprintf(hostname, "DIYBMS-%08X", chipId);
-    WiFi.setHostname(hostname);
-#endif
-    SERIAL_DEBUG.print(F("Hostname: "));
-    SERIAL_DEBUG.print(hostname);
-    SERIAL_DEBUG.println(F("  Connecting to Wi-Fi..."));
-    WiFi.begin(DIYBMSSoftAP::WifiSSID(), DIYBMSSoftAP::WifiPassword());
+    return;
   }
 
-  WifiDisconnected = false;
+  /*
+WiFi.status() only returns:
+
+    switch(status) {
+        case STATION_GOT_IP:
+            return WL_CONNECTED;
+        case STATION_NO_AP_FOUND:
+            return WL_NO_SSID_AVAIL;
+        case STATION_CONNECT_FAIL:
+        case STATION_WRONG_PASSWORD:
+            return WL_CONNECT_FAILED;
+        case STATION_IDLE:
+            return WL_IDLE_STATUS;
+        default:
+            return WL_DISCONNECTED;
+    }
+*/
+
+  WiFi.mode(WIFI_STA);
+
+  char hostname[40];
+
+  sprintf(hostname, "DIYBMS-%08X", ESP.getChipId());
+  wifi_station_set_hostname(hostname);
+  WiFi.hostname(hostname);
+
+  SERIAL_DEBUG.print(F("Hostname: "));
+  SERIAL_DEBUG.print(hostname);
+  SERIAL_DEBUG.print(F(" Current state: "));
+  SERIAL_DEBUG.print((uint8_t)status);
+
+  SERIAL_DEBUG.println(F(",Connect to Wi-Fi..."));
+  WiFi.begin(DIYBMSSoftAP::WifiSSID(), DIYBMSSoftAP::WifiPassword());
 }
 
 void connectToMqtt()
@@ -913,7 +764,6 @@ void SetupOTA()
 {
 
   ArduinoOTA.setPort(3232);
-  //ArduinoOTA.setHostname("diybmsesp32");
   ArduinoOTA.setPassword("1jiOOx12AQgEco4e");
 
   ArduinoOTA
@@ -949,34 +799,42 @@ void SetupOTA()
 
   ArduinoOTA.begin();
 }
-#if defined(ESP8266)
+
+sdcard_info sdcard_callback()
+{
+  //Fake
+  sdcard_info ret;
+  ret.available = _sd_card_installed;
+  ret.totalkilobytes = 0;
+  ret.usedkilobytes = 0;
+  ret.flash_totalkilobytes = 0;
+  ret.flash_usedkilobytes = 0;
+  return ret;
+}
+void sdcardaction_callback(uint8_t action)
+{
+  //Fake
+  _sd_card_installed = false;
+}
+
 void onWifiConnect(const WiFiEventStationModeGotIP &event)
 {
-#else
-void onWifiConnect(WiFiEvent_t event, WiFiEventInfo_t info)
-{
-#endif
 
-  SERIAL_DEBUG.print(F("Wi-Fi status="));
-  SERIAL_DEBUG.print(WiFi.status());
-  SERIAL_DEBUG.print(F(". Connected IP:"));
+  SERIAL_DEBUG.print(F("onWifiConnect status="));
+  SERIAL_DEBUG.println(WiFi.status());
+  SERIAL_DEBUG.print(F("Connected IP:"));
   SERIAL_DEBUG.println(WiFi.localIP());
+  SERIAL_DEBUG.print(F("Hostname:"));
+  SERIAL_DEBUG.println(WiFi.hostname().c_str());
 
-  SERIAL_DEBUG.print(F("Request NTP from "));
-  SERIAL_DEBUG.println(mysettings.ntpServer);
+  //SERIAL_DEBUG.print(F("Request NTP from "));
+  //SERIAL_DEBUG.println(mysettings.ntpServer);
 
-#if defined(ESP8266)
-  //Update time every 10 minutes
-  NTP.setInterval(600);
+  //Update time every 20 minutes
+  NTP.setInterval(1200);
   NTP.setNTPTimeout(NTP_TIMEOUT);
   // String ntpServerName, int8_t timeZone, bool daylight, int8_t minutes, AsyncUDP* udp_conn
   NTP.begin(mysettings.ntpServer, mysettings.timeZone, mysettings.daylight, mysettings.minutesTimeZone);
-#endif
-
-#if defined(ESP32)
-  //Use native ESP32 code
-  configTime(mysettings.minutesTimeZone * 60, mysettings.daylight * 60, mysettings.ntpServer);
-#endif
 
   /*
   TODO: CHECK ERROR CODES BETTER!
@@ -988,7 +846,7 @@ void onWifiConnect(WiFiEvent_t event, WiFiEventInfo_t info)
   */
   if (!server_running)
   {
-    DIYBMSServer::StartServer(&server);
+    DIYBMSServer::StartServer(&server, &mysettings, &sdcard_callback, &prg, &receiveProc, &ControlState, &rules, &sdcardaction_callback);
     server_running = true;
   }
 
@@ -1003,20 +861,27 @@ void onWifiConnect(WiFiEvent_t event, WiFiEventInfo_t info)
   }
 
   SetupOTA();
+
+  // Set up mDNS responder:
+  // - first argument is the domain name, in this example
+  //   the fully-qualified domain name is "esp8266.local"
+  // - second argument is the IP address to advertise
+  //   we send our IP address on the WiFi network
+
+  if (MDNS.begin(WiFi.hostname().c_str(), WiFi.localIP()))
+  {
+    // Add service to MDNS-SD
+    MDNS.addService("http", "tcp", 80);
+  }
+  else
+  {
+    SERIAL_DEBUG.println("Error setting up MDNS responder!");
+  }
 }
 
-#if defined(ESP8266)
 void onWifiDisconnect(const WiFiEventStationModeDisconnected &event)
 {
-#else
-void onWifiDisconnect(WiFiEvent_t event, WiFiEventInfo_t info)
-{
-#endif
   SERIAL_DEBUG.println(F("Disconnected from Wi-Fi."));
-
-  //Indicate to loop() to reconnect, seems to be
-  //ESP issues using Wifi from timers - https://github.com/espressif/arduino-esp32/issues/2686
-  WifiDisconnected = true;
 
   // ensure we don't reconnect to MQTT while reconnecting to Wi-Fi
   mqttReconnectTimer.detach();
@@ -1024,7 +889,8 @@ void onWifiDisconnect(WiFiEvent_t event, WiFiEventInfo_t info)
   myTimerSendMqttStatus.detach();
   myTimerSendInfluxdbPacket.detach();
 
-  //wifiReconnectTimer.once(2, connectToWifi);
+  NTP.stop();
+  MDNS.end();
 }
 
 void onMqttDisconnect(AsyncMqttClientDisconnectReason reason)
@@ -1054,22 +920,14 @@ void sendMqttStatus()
   root["cells"] = mysettings.totalNumberOfSeriesModules;
   root["uptime"] = millis() / 1000; // I want to know the uptime of the device.
 
-  JsonArray bankVoltage = root.createNestedArray("bankVoltage");
-  for (int8_t bank = 0; bank < mysettings.totalNumberOfBanks; bank++)
-  {
-    bankVoltage.add((float)rules.packvoltage[bank] / (float)1000.0);
-  }
-
-  JsonObject monitor = root.createNestedObject("monitor");
-
   // Set error flag if we have attempted to send 2*number of banks without a reply
-  monitor["commserr"] = receiveProc.HasCommsTimedOut() ? 1 : 0;
-  monitor["sent"] = prg.packetsGenerated;
-  monitor["received"] = receiveProc.packetsReceived;
-  monitor["badcrc"] = receiveProc.totalCRCErrors;
-  monitor["ignored"] = receiveProc.totalNotProcessedErrors;
-  monitor["oos"] = receiveProc.totalOutofSequenceErrors;
-  monitor["roundtrip"] = receiveProc.packetTimerMillisecond;
+  root["commserr"] = receiveProc.HasCommsTimedOut() ? 1 : 0;
+  root["sent"] = prg.packetsGenerated;
+  root["received"] = receiveProc.packetsReceived;
+  root["badcrc"] = receiveProc.totalCRCErrors;
+  root["ignored"] = receiveProc.totalNotProcessedErrors;
+  root["oos"] = receiveProc.totalOutofSequenceErrors;
+  root["roundtrip"] = receiveProc.packetTimerMillisecond;
 
   serializeJson(doc, jsonbuffer, sizeof(jsonbuffer));
   sprintf(topic, "%s/status", mysettings.mqtt_topic);
@@ -1080,6 +938,22 @@ void sendMqttStatus()
   SERIAL_DEBUG.print('=');
   SERIAL_DEBUG.println(jsonbuffer);
 #endif
+  //Output bank level information (just voltage for now)
+  for (int8_t bank = 0; bank < mysettings.totalNumberOfBanks; bank++)
+  {
+    doc.clear();
+    doc["voltage"] = (float)rules.packvoltage[bank] / (float)1000.0;
+
+    serializeJson(doc, jsonbuffer, sizeof(jsonbuffer));
+    sprintf(topic, "%s/bank/%d", mysettings.mqtt_topic, bank);
+    mqttClient.publish(topic, 0, false, jsonbuffer);
+#if defined(MQTT_LOGGING)
+    SERIAL_DEBUG.print("MQTT - ");
+    SERIAL_DEBUG.print(topic);
+    SERIAL_DEBUG.print('=');
+    SERIAL_DEBUG.println(jsonbuffer);
+#endif
+  }
 
   //Using Json for below reduced MQTT messages from 14 to 2. Could be combined into same json object too. But even better is status + event driven.
   doc.clear(); // Need to clear the json object for next message
@@ -1219,6 +1093,9 @@ void LoadConfiguration()
   mysettings.mqtt_enabled = false;
   mysettings.mqtt_port = 1883;
 
+  mysettings.loggingEnabled = false;
+  mysettings.loggingFrequencySeconds = 15;
+
   //Default to EMONPI default MQTT settings
   strcpy(mysettings.mqtt_topic, "diybms");
   strcpy(mysettings.mqtt_server, "192.168.0.26");
@@ -1241,24 +1118,27 @@ void LoadConfiguration()
     mysettings.rulerelaydefault[x] = RELAY_OFF;
   }
 
-  //1. Emergency stop
+  //Emergency stop
   mysettings.rulevalue[Rule::EmergencyStop] = 0;
-  //2. Internal BMS error (communication issues, fault readings from modules etc)
+  //Internal BMS error (communication issues, fault readings from modules etc)
   mysettings.rulevalue[Rule::BMSError] = 0;
-  //3. Individual cell over voltage
+  //Individual cell over voltage
   mysettings.rulevalue[Rule::Individualcellovervoltage] = 4150;
-  //4. Individual cell under voltage
+  //Individual cell under voltage
   mysettings.rulevalue[Rule::Individualcellundervoltage] = 3000;
-  //5. Individual cell over temperature (external probe)
+  //Individual cell over temperature (external probe)
   mysettings.rulevalue[Rule::IndividualcellovertemperatureExternal] = 55;
-  //6. Pack over voltage (mV)
+  //Pack over voltage (mV)
   mysettings.rulevalue[Rule::IndividualcellundertemperatureExternal] = 5;
-  //7. Pack under voltage (mV)
+  //Pack under voltage (mV)
   mysettings.rulevalue[Rule::PackOverVoltage] = 4200 * 8;
-  //8. RULE_PackUnderVoltage
+  //RULE_PackUnderVoltage
   mysettings.rulevalue[Rule::PackUnderVoltage] = 3000 * 8;
   mysettings.rulevalue[Rule::Timer1] = 60 * 8;  //8am
   mysettings.rulevalue[Rule::Timer2] = 60 * 17; //5pm
+
+  mysettings.rulevalue[Rule::ModuleOverTemperatureInternal] = 60;
+  mysettings.rulevalue[Rule::ModuleUnderTemperatureInternal] = 50;
 
   for (size_t i = 0; i < RELAY_RULES; i++)
   {
@@ -1372,40 +1252,158 @@ void resetAllRules()
   }
 }
 
+bool CaptureSerialInput(HardwareSerial stream, char *buffer, int buffersize, bool OnlyDigits, bool ShowPasswordChar)
+{
+  int length = 0;
+  unsigned long timer = millis() + 30000;
+
+  while (true)
+  {
+
+    //Abort after 30 seconds of inactivity
+    if (millis() > timer)
+      return false;
+
+    //We should add a timeout in here, and return FALSE when we abort....
+    while (stream.available())
+    {
+      //Reset timer on serial input
+      timer = millis() + 30000;
+
+      int data = stream.read();
+      if (data == '\b' || data == '\177')
+      { // BS and DEL
+        if (length)
+        {
+          length--;
+          stream.write("\b \b");
+        }
+      }
+      else if (data == '\n')
+      {
+        //Ignore
+      }
+      else if (data == '\r')
+      {
+        if (length > 0)
+        {
+          stream.write("\r\n"); // output CRLF
+          buffer[length] = '\0';
+
+          //Soak up any other characters on the buffer and throw away
+          while (stream.available())
+          {
+            stream.read();
+          }
+
+          //Return to caller
+          return true;
+        }
+
+        length = 0;
+      }
+      else if (length < buffersize - 1)
+      {
+        if (OnlyDigits && (data < '0' || data > '9'))
+        {
+          //We need to filter out non-digit characters
+        }
+        else
+        {
+          buffer[length++] = data;
+          if (ShowPasswordChar)
+          {
+            //Hide real character
+            stream.write('*');
+          }
+          else
+          {
+            stream.write(data);
+          }
+        }
+      }
+    }
+  }
+}
+
+void TerminalBasedWifiSetup(HardwareSerial stream)
+{
+  stream.println(F("\r\n\r\nDIYBMS CONTROLLER - Scanning Wifi"));
+
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect();
+
+  int n = WiFi.scanNetworks();
+
+  if (n == 0)
+    stream.println(F("no networks found"));
+  else
+  {
+    for (int i = 0; i < n; ++i)
+    {
+      if (i < 10)
+      {
+        stream.print(' ');
+      }
+      stream.print(i);
+      stream.print(':');
+      stream.print(WiFi.SSID(i));
+
+      //Pad out the wifi names into 2 columns
+      for (size_t spaces = WiFi.SSID(i).length(); spaces < 36; spaces++)
+      {
+        stream.print(' ');
+      }
+
+      if ((i + 1) % 2 == 0)
+      {
+        stream.println();
+      }
+      delay(5);
+    }
+    stream.println();
+  }
+
+  WiFi.mode(WIFI_OFF);
+
+  stream.print(F("Enter the NUMBER of the Wifi network to connect to:"));
+
+  bool result;
+  char buffer[10];
+  result = CaptureSerialInput(stream, buffer, 10, true, false);
+  if (result)
+  {
+    int index = String(buffer).toInt();
+    stream.print(F("Enter the password to use when connecting to '"));
+    stream.print(WiFi.SSID(index));
+    stream.print("':");
+
+    char passwordbuffer[80];
+    result = CaptureSerialInput(stream, passwordbuffer, 80, false, true);
+
+    if (result)
+    {
+      wifi_eeprom_settings config;
+      memset(&config, 0, sizeof(config));
+      WiFi.SSID(index).toCharArray(config.wifi_ssid, sizeof(config.wifi_ssid));
+      strcpy(config.wifi_passphrase, passwordbuffer);
+      Settings::WriteConfigToEEPROM((char *)&config, sizeof(config), EEPROM_WIFI_START_ADDRESS);
+    }
+  }
+
+  stream.println(F("REBOOTING IN 5..."));
+  delay(5000);
+  ESP.restart();
+}
 void setup()
 {
   WiFi.mode(WIFI_OFF);
-#if defined(ESP32)
-  btStop();
-  esp_log_level_set("*", ESP_LOG_WARN); // set all components to WARN level
-//esp_log_level_set("wifi", ESP_LOG_WARN);      // enable WARN logs from WiFi stack
-//esp_log_level_set("dhcpc", ESP_LOG_WARN);     // enable INFO logs from DHCP client
-#endif
 
-//Debug serial output
-#if defined(ESP8266)
+  //Debug serial output
+
   //ESP8266 uses dedicated 2nd serial port, but transmit only
   SERIAL_DEBUG.begin(115200, SERIAL_8N1, SERIAL_TX_ONLY);
   SERIAL_DEBUG.setDebugOutput(true);
-#endif
-#if defined(ESP32)
-  //ESP32 we use the USB serial interface for console/debug messages
-  SERIAL_DEBUG.begin(115200, SERIAL_8N1);
-  SERIAL_DEBUG.setDebugOutput(true);
-
-  esp_chip_info_t chip_info;
-  esp_chip_info(&chip_info);
-
-  SERIAL_DEBUG.print(F("ESP32 Chip model = "));
-  SERIAL_DEBUG.print(chip_info.model);
-  SERIAL_DEBUG.print(", Rev ");
-  SERIAL_DEBUG.print(chip_info.revision);
-  SERIAL_DEBUG.print(", Cores ");
-  SERIAL_DEBUG.print(chip_info.cores);
-  SERIAL_DEBUG.print(", Features=0x");
-  SERIAL_DEBUG.println(chip_info.features, HEX);
-
-#endif
 
   //We generate a unique number which is used in all following JSON requests
   //we use this as a simple method to avoid cross site scripting attacks
@@ -1414,37 +1412,8 @@ void setup()
   SetControllerState(ControllerState::PowerUp);
 
   hal.ConfigurePins();
-#if defined(ESP32)
-  hal.ConfigureI2C(TCA6408Interrupt, TCA9534AInterrupt);
-  //Purple during start up
-  hal.Led(RGBLED::Purple);
-#endif
 
-#if defined(ESP8266)
   hal.ConfigureI2C(ExternalInputInterrupt);
-#endif
-
-#if defined(ESP32)
-  //All comms to i2c needs to go through this single task
-  //to prevent issues with thread safety on the i2c hardware/libraries
-  queue_i2c = xQueueCreate(10, sizeof(i2cQueueMessage));
-
-  //Create i2c task on CPU 0 (normal code runs on CPU 1)
-  xTaskCreatePinnedToCore(i2c_task, "i2c", 2048, nullptr, 2, &i2c_task_handle, 0);
-  xTaskCreatePinnedToCore(ledoff_task, "ledoff", 1048, nullptr, 1, &ledoff_task_handle, 0);
-#endif
-
-  //Pretend the button is not pressed
-  uint8_t clearAPSettings = 0xFF;
-#if defined(ESP8266)
-  //Fix for issue 5, delay for 3 seconds on power up with green LED lit so
-  //people get chance to jump WIFI reset pin (d3)
-  hal.GreenLedOn();
-  delay(3000);
-  //This is normally pulled high, D3 is used to reset WIFI details
-  clearAPSettings = digitalRead(RESET_WIFI_PIN);
-  hal.GreenLedOff();
-#endif
 
   //Pre configure the array
   memset(&cmi, 0, sizeof(cmi));
@@ -1455,34 +1424,16 @@ void setup()
 
   resetAllRules();
 
-#if defined(ESP32)
-  //Receive is IO2 which means the RX1 plug must be disconnected for programming to work!
-  SERIAL_DATA.begin(COMMS_BAUD_RATE, SERIAL_8N1, 2, 32); // Serial for comms to modules
-#endif
-
-#if defined(ESP8266)
-  SERIAL_DATA.begin(COMMS_BAUD_RATE, SERIAL_8N1); // Serial for comms to modules
-  //Use alternative GPIO pins of D7/D8
-  //D7 = GPIO13 = RECEIVE SERIAL
-  //D8 = GPIO15 = TRANSMIT SERIAL
-  SERIAL_DATA.swap();
-#endif
-
-  myPacketSerial.begin(&SERIAL_DATA, &onPacketReceived, sizeof(PacketStruct), SerialPacketReceiveBuffer, sizeof(SerialPacketReceiveBuffer));
-
-#if defined(ESP8266)
   // initialize LittleFS
   if (!LittleFS.begin())
-#endif
-#if defined(ESP32)
-    // initialize LittleFS
-    if (!SPIFFS.begin())
-#endif
-    {
-      SERIAL_DEBUG.println(F("An Error has occurred while mounting LittleFS"));
-    }
+  {
+    SERIAL_DEBUG.println(F("An Error has occurred while mounting LittleFS"));
+  }
 
   LoadConfiguration();
+
+  //Force logging off for ESP8266
+  mysettings.loggingEnabled = false;
 
   InputsEnabled = hal.InputsEnabled;
   OutputsEnabled = hal.OutputsEnabled;
@@ -1494,6 +1445,47 @@ void setup()
     //Set relay defaults
     hal.SetOutputState(y, mysettings.rulerelaydefault[y]);
   }
+
+  //Pretend the button is not pressed
+  uint8_t clearAPSettings = 0xFF;
+  //Fix for issue 5, delay for 3 seconds on power up with green LED lit so
+  //people get chance to jump WIFI reset pin (d3)
+  hal.GreenLedOn();
+
+  SERIAL_DATA.begin(115200, SERIAL_8N1); // Serial for comms to modules
+
+  //Allow user to press SPACE BAR key on serial terminal
+  //to enter text based WIFI setup
+  SERIAL_DATA.print(F("\r\n\r\n\r\nPress SPACE BAR to enter terminal based configuration...."));
+  for (size_t i = 0; i < (3000 / 250); i++)
+  {
+    SERIAL_DATA.print('.');
+    while (SERIAL_DATA.available())
+    {
+      int x = SERIAL_DATA.read();
+      //SPACE BAR
+      if (x == 32)
+      {
+        TerminalBasedWifiSetup(SERIAL_DATA);
+      }
+    }
+    delay(250);
+  }
+  SERIAL_DATA.println(F("skipped"));
+  SERIAL_DATA.flush();
+  SERIAL_DATA.end();
+
+  //This is normally pulled high, D3 is used to reset WIFI details
+  clearAPSettings = digitalRead(RESET_WIFI_PIN);
+  hal.GreenLedOff();
+
+  SERIAL_DATA.begin(COMMS_BAUD_RATE, SERIAL_8N1); // Serial for comms to modules
+  //Use alternative GPIO pins of D7/D8
+  //D7 = GPIO13 = RECEIVE SERIAL
+  //D8 = GPIO15 = TRANSMIT SERIAL
+  SERIAL_DATA.swap();
+
+  myPacketSerial.begin(&SERIAL_DATA, &onPacketReceived, sizeof(PacketStruct), SerialPacketReceiveBuffer, sizeof(SerialPacketReceiveBuffer));
 
   //Temporarly force WIFI settings
   //wifi_eeprom_settings xxxx;
@@ -1516,28 +1508,19 @@ void setup()
   else
   {
 
-#if defined(ESP8266)
     //Config NTP
     NTP.onNTPSyncEvent([](NTPSyncEvent_t event) {
       ntpEvent = event;
       NTPsyncEventTriggered = true;
     });
-#endif
 
     SERIAL_DEBUG.println(F("Connecting to WIFI"));
 
     /* Explicitly set the ESP8266 to be a WiFi-client, otherwise by default,
       would try to act as both a client and an access-point */
 
-#if defined(ESP8266)
     wifiConnectHandler = WiFi.onStationModeGotIP(onWifiConnect);
     wifiDisconnectHandler = WiFi.onStationModeDisconnected(onWifiDisconnect);
-#endif
-
-#if defined(ESP32)
-    WiFi.onEvent(onWifiConnect, WiFiEvent_t::SYSTEM_EVENT_STA_GOT_IP);
-    WiFi.onEvent(onWifiDisconnect, WiFiEvent_t::SYSTEM_EVENT_STA_DISCONNECTED);
-#endif
 
     mqttClient.onConnect(onMqttConnect);
     mqttClient.onDisconnect(onMqttDisconnect);
@@ -1568,16 +1551,29 @@ void setup()
 
     //We have just started...
     SetControllerState(ControllerState::Stabilizing);
+
+    //Attempt connection in setup(), loop() will also try every 30 seconds
+    connectToWifi();
   }
 }
+
+unsigned long wifitimer = 0;
 
 void loop()
 {
   //ESP_LOGW("LOOP","LOOP");
+  unsigned long currentMillis = millis();
 
-  if (WifiDisconnected && ControlState != ControllerState::ConfigurationSoftAP)
+  if (ControlState != ControllerState::ConfigurationSoftAP)
   {
-    connectToWifi();
+    //on first pass wifitimer is zero
+    if (currentMillis - wifitimer > 30000)
+    {
+      //Attempt to connect to WiFi every 30 seconds, this caters for when WiFi drops
+      //such as AP reboot, its written to return without action if we are already connected
+      connectToWifi();
+      wifitimer = currentMillis;
+    }
   }
 
   ArduinoOTA.handle();
@@ -1585,29 +1581,11 @@ void loop()
   // Call update to receive, decode and process incoming packets.
   myPacketSerial.checkInputStream();
 
-  if (ConfigHasChanged > 0)
-  {
-    //Auto reboot if needed (after changing MQTT or INFLUX settings)
-    //Ideally we wouldn't need to reboot if the code could sort itself out!
-    ConfigHasChanged--;
-    if (ConfigHasChanged == 0)
-    {
-      SERIAL_DEBUG.println(F("RESTART AFTER CONFIG CHANGE"));
-      //Stop networking
-      if (mqttClient.connected())
-      {
-        mqttClient.disconnect(true);
-      }
-      WiFi.disconnect();
-      ESP.restart();
-    }
-  }
-
-#if defined(ESP8266)
   if (NTPsyncEventTriggered)
   {
     processSyncEvent(ntpEvent);
     NTPsyncEventTriggered = false;
   }
-#endif
+
+  MDNS.update();
 }

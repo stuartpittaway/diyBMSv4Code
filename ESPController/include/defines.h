@@ -7,35 +7,12 @@
 #ifndef DIYBMS_DEFINES_H_
 #define DIYBMS_DEFINES_H_
 
-#if defined(ESP32)
-//Data uses Rx2/TX2 and debug logs go to serial0 - USB
-#define SERIAL_DATA Serial2
-#define SERIAL_DEBUG Serial
 
-//Total number of cells a single controler can handle (memory limitation)
-#define maximum_controller_cell_modules 250
-
-enum RGBLED : uint8_t
-{
-  OFF = 0,
-  Blue = B00000001,
-  Red = B00000010,
-  Purple = B00000011,
-  Green = B00000100,
-  Cyan = B00000101,
-  Yellow = B00000110,
-  White = B00000111
-};
-#endif
-
-#if defined(ESP8266)
 #define SERIAL_DATA Serial
 #define SERIAL_DEBUG Serial1
 
-//Total number of cells a single controler can handle (memory limitation)
+//Total number of cells a single controller can handle (memory limitation)
 #define maximum_controller_cell_modules 100
-
-#endif
 
 //Maximum of 16 cell modules (don't change this!) number of cells to process in a single packet of data
 #define maximum_cell_modules_per_packet 16
@@ -45,7 +22,7 @@ enum RGBLED : uint8_t
 #define maximum_number_of_banks 16
 
 //Version 4.XX of DIYBMS modules operate at 2400 baud
-#define COMMS_BAUD_RATE 2400
+//#define COMMS_BAUD_RATE 2400
 
 #define EEPROM_SETTINGS_START_ADDRESS 256
 
@@ -111,6 +88,9 @@ struct diybms_eeprom_settings
   bool daylight;          //=false;
   char ntpServer[64 + 1]; // = "time.google.com";
 
+  bool loggingEnabled;
+  uint16_t loggingFrequencySeconds;
+
   //NOTE this array is subject to buffer overflow vulnerabilities!
   bool mqtt_enabled;
   uint16_t mqtt_port;
@@ -127,8 +107,7 @@ struct diybms_eeprom_settings
   char influxdb_password[32 + 1];
 };
 
-typedef union
-{
+typedef union {
   float number;
   uint8_t bytes[4];
   uint16_t word[2];
@@ -215,6 +194,16 @@ enum ControllerState : uint8_t
   Stabilizing = 2,
   ConfigurationSoftAP = 3,
   Running = 255,
+};
+
+struct sdcard_info
+{
+  bool available;
+  uint32_t totalkilobytes;
+  uint32_t usedkilobytes;
+  uint32_t flash_totalkilobytes;
+  uint32_t flash_usedkilobytes;
+
 };
 
 //This holds all the cell information in a large array array

@@ -26,6 +26,10 @@ https://creativecommons.org/licenses/by-nc-sa/2.0/uk/
 
 #include "packet_processor.h"
 
+//Enable this for debug/testing a single module will pretend to be an entire bank of 16 modules
+//you are likely to get OOS errors when these are running in a string as the timings will be wrong
+//#define FAKE_16_CELLS
+
 //Returns TRUE if the internal thermistor is hotter than the required setting (or over max limit)
 bool PacketProcessor::BypassOverheatCheck()
 {
@@ -61,7 +65,8 @@ void PacketProcessor::ADCReading(uint16_t value)
   {
 #if (defined(DIYBMSMODULEVERSION) && (DIYBMSMODULEVERSION == 420 && defined(SWAPR19R20)))
     //R19 and R20 swapped on V4.2 board, invert the thermistor reading
-    raw_adc_onboard_temperature = 1225 - value;
+    //Reverted back to 1000 base value to fix issue https://github.com/stuartpittaway/diyBMSv4Code/issues/95
+    raw_adc_onboard_temperature = 1000 - value;
 #elif (defined(DIYBMSMODULEVERSION) && (DIYBMSMODULEVERSION == 430 && defined(SWAPR19R20)))
     //R19 and R20 swapped on V4.3 board (never publically released), invert the thermistor reading
     raw_adc_onboard_temperature = 1000 - value;
@@ -111,6 +116,7 @@ void PacketProcessor::TakeAnAnalogueReading(uint8_t mode)
 //Run when a new packet is received over serial
 bool PacketProcessor::onPacketReceived(PacketStruct *receivebuffer)
 {
+  bool commandProcessed = false;
   //Temporary debug counter, see where packets get lost
   PacketReceivedCounter++;
 
@@ -119,27 +125,37 @@ bool PacketProcessor::onPacketReceived(PacketStruct *receivebuffer)
 
   if (validateCRC == receivebuffer->crc)
   {
-    //TODO: We can probably get rid of mymoduleaddress
-    mymoduleaddress = receivebuffer->hops;
 
-    bool isPacketForMe = receivebuffer->start_address <= mymoduleaddress && receivebuffer->end_address >= mymoduleaddress;
-
-    //Increment the hops no matter what (on valid CRC)
-    receivebuffer->hops++;
-
-    bool commandProcessed = false;
-    //It's a good packet
-    if (isPacketForMe)
+#if defined(FAKE_16_CELLS)
+    uint8_t start=receivebuffer->hops;
+    uint8_t end=start+16;
+    for (size_t i = start; i < end; i++)
     {
-      commandProcessed = processPacket(receivebuffer);
+#endif
 
-      if (commandProcessed)
+      //TODO: We can probably get rid of mymoduleaddress
+      mymoduleaddress = receivebuffer->hops;
+
+      bool isPacketForMe = receivebuffer->start_address <= mymoduleaddress && receivebuffer->end_address >= mymoduleaddress;
+
+      //Increment the hops no matter what (on valid CRC)
+      receivebuffer->hops++;
+
+      commandProcessed = false;
+      //It's a good packet
+      if (isPacketForMe)
       {
-        //Set flag to indicate we processed packet (other modules may also do this)
-        receivebuffer->command = receivebuffer->command | B10000000;
-      }
-    }
+        commandProcessed = processPacket(receivebuffer);
 
+        if (commandProcessed)
+        {
+          //Set flag to indicate we processed packet (other modules may also do this)
+          receivebuffer->command = receivebuffer->command | B10000000;
+        }
+      }
+#if defined(FAKE_16_CELLS)
+    }
+#endif
     //Calculate new checksum over whole buffer (as hops as increased)
     receivebuffer->crc = CRC16::CalculateArray((unsigned char *)receivebuffer, sizeof(PacketStruct) - 2);
 

@@ -14,7 +14,8 @@
         var DEFAULT_GRAPH_MIN_VOLTAGE = parseFloat('%graph_voltagelow%');
         var XSS_KEY = '%XSS_KEY%';
     </script>
-    <script type='text/javascript' src='jquery.js' integrity='%integrity_file_jquery_js%' crossorigin='anonymous'></script>
+    <script type='text/javascript' src='jquery.js' integrity='%integrity_file_jquery_js%' crossorigin='anonymous'>
+    </script>
     <title>DIY BMS CONTROLLER v4</title>
 </head>
 
@@ -28,6 +29,7 @@
             <a id="settings" href="#settings">Settings</a>
             <a id="rules" href="#rules">Rules</a>
             <a id="integration" href="#integration">Integration</a>
+            <!--<a id="storage" href="#storage">Storage</a>-->
             <a id="about" href="#about">About</a>
         </div>
     </div>
@@ -52,7 +54,7 @@
         <div id='warning2' class='warning'>Warning: Module bypass temperature is different to global setting</div>
         <div id='warning3' class='warning'>Warning: Modules have mixed versions of code, may cause instability</div>
         <div id='warning4' class='warning'>Warning: Modules have mixed versions of hardware/boards</div>
-    
+        <div id='warning5' class='warning'>Warning: Logging enabled but SD card not installed/found</div>
     </div>
     <div id="info" class="info">
         <div id="current" class="stat"><span class="x t">Current:</span><span class="x v"></span></div>
@@ -79,12 +81,16 @@
     <div class="page" id="aboutPage">
         <h1>About</h1>
         <div class="region">
-            <h2>Source Code</h2>
-            <a href="https://github.com/stuartpittaway/diyBMSv4" rel="noreferrer" target="_blank">https://github.com/stuartpittaway/diyBMSv4</a>
+            <h2>Source Code &amp; Hardware</h2>
+            <p>Code:<a href="https://github.com/stuartpittaway/diyBMSv4code" rel="noreferrer"
+                target="_blank">https://github.com/stuartpittaway/diyBMSv4code</a></p>
+                <p>Hardware: <a href="https://github.com/stuartpittaway/diyBMSv4" rel="noreferrer"
+                target="_blank">https://github.com/stuartpittaway/diyBMSv4</a></p>
         </div>
         <div class="region">
             <h2>Videos</h2>
-            <a href="https://www.youtube.com/stuartpittaway" rel="noreferrer" target="_blank">YouTube videos on installation and configuration</a>
+            <a href="https://youtube.com/playlist?list=PLHhwQCDPuRcZW3u0jJucsiCCsUbNbMy-c" rel="noreferrer" target="_blank">YouTube videos on
+                installation and configuration</a>
         </div>
         <div class="region">
             <h2>WARNING</h2>
@@ -100,19 +106,22 @@
             <p>Remember, this product is free for personal use, if you would like to make a regular donation to keep the
                 features and improvements flowing, use the Patreon link below. Even just a coffee/beer a month makes a
                 difference. Thank you!
-                <a href="https://www.patreon.com/StuartP" rel="noreferrer" target="_blank"><img src="patron.png" width="176" height="34" alt="Patron" /></a>
+                <a href="https://www.patreon.com/StuartP" rel="noreferrer" target="_blank"><img src="patron.png"
+                        width="176" height="34" alt="Patron" /></a>
             </p>
         </div>
         <div class="region">
             <h2>License</h2>
             <p>This work is licensed under a Creative Commons Attribution-NonCommercial-ShareAlike 2.0 UK: England &
                 Wales License.</p>
-            <a href="https://creativecommons.org/licenses/by-nc-sa/2.0/uk/" rel="noreferrer" target="_blank">https://creativecommons.org/licenses/by-nc-sa/2.0/uk/</a>
+            <a href="https://creativecommons.org/licenses/by-nc-sa/2.0/uk/" rel="noreferrer"
+                target="_blank">https://creativecommons.org/licenses/by-nc-sa/2.0/uk/</a>
         </div>
         <div class="region">
             <h2>Platform &amp; Version</h2>
             <p>Processor: %PLATFORM%</p>
-            <p>Version: <a href="https://github.com/stuartpittaway/diyBMSv4Code/commit/%GIT_VERSION%" rel="noreferrer" target="_blank">%GIT_VERSION%</a></p>
+            <p>Version: <a href="https://github.com/stuartpittaway/diyBMSv4Code/commit/%GIT_VERSION%" rel="noreferrer"
+                    target="_blank">%GIT_VERSION%</a></p>
             <p>Compiled: %COMPILE_DATE_TIME%</p>
             <p>Free block size:<span id="FreeBlockSize"></span></p>
             <p>Free heap:<span id="FreeHeap"></span></p>
@@ -155,7 +164,7 @@
                         </div>
                         <div>
                             <label for="Version">Module version</label>
-                            <input type="text" name="Version" id="Version" value="" readonly="">
+                            <span name="Version" id="Version"></span>
                         </div>
                         <div>
                             <label for="BypassOverTempShutdown">Bypass over temperature</label>
@@ -225,8 +234,7 @@
         <h1>Integration</h1>
         <p>For security, you will need to re-enter the password for the service(s) you want to enable or modify, before
             you save.</p>
-        <p>After changes are made, the controller will automatically reboot. You will need to refresh the web page to
-            continue.</p>
+        <p>After changes are made, the controller will need to be rebooted, do this manually.</p>
         <div class="region">
             <h2>MQTT</h2>
             <form id="mqttForm" method="POST" action="savemqtt.json" autocomplete="off">
@@ -359,7 +367,7 @@
                                 <td class="relayset"></td>
                             </tr>
                             <tr>
-                                <td><label for="rule4value">Individual cell under voltage (mV)</label></td>
+                                <td><label for="rule4value">Cell under voltage (mV)</label></td>
                                 <td><input type="number" min="1800" max="4500" step="10" name="rule4value"
                                         id="rule4value" value="3000" required=""></td>
                                 <td><input type="number" min="1800" max="4500" step="10" name="rule4hysteresis"
@@ -367,7 +375,7 @@
                                 <td class="relayset"></td>
                             </tr>
                             <tr>
-                                <td><label for="rule5value">Individual cell over temperature (internal) °C</label></td>
+                                <td><label for="rule5value">Module over temperature (internal) °C</label></td>
                                 <td><input type="number" min="0" max="90" step="1" name="rule5value" id="rule5value"
                                         value="60" required=""></td>
                                 <td><input type="number" min="0" max="90" step="1" name="rule5hysteresis"
@@ -375,7 +383,7 @@
                                 <td class="relayset"></td>
                             </tr>
                             <tr>
-                                <td><label for="rule6value">Individual cell under temperature (internal) °C</label></td>
+                                <td><label for="rule6value">Module under temperature (internal) °C</label></td>
                                 <td><input type="number" min="0" max="90" step="1" name="rule6value" id="rule6value"
                                         value="5" required=""></td>
                                 <td><input type="number" min="0" max="90" step="1" name="rule6hysteresis"
@@ -383,7 +391,7 @@
                                 <td class="relayset"></td>
                             </tr>
                             <tr>
-                                <td><label for="rule7value">Individual cell over temperature (external) °C</label></td>
+                                <td><label for="rule7value">Cell over temperature (external) °C</label></td>
                                 <td><input type="number" min="0" max="90" step="1" name="rule7value" id="rule7value"
                                         value="45" required=""></td>
                                 <td><input type="number" min="0" max="90" step="1" name="rule7hysteresis"
@@ -391,7 +399,7 @@
                                 <td class="relayset"></td>
                             </tr>
                             <tr>
-                                <td><label for="rule8value">Individual cell under temperature (external) °C</label></td>
+                                <td><label for="rule8value">Cell under temperature (external) °C</label></td>
                                 <td><input type="number" min="0" max="90" step="1" name="rule8value" id="rule8value"
                                         value="5" required=""></td>
                                 <td><input type="number" min="0" max="90" step="1" name="rule8hysteresis"
@@ -600,6 +608,50 @@
                 </div>
             </form>
         </div>
+    </div>
+
+    <div class="page" id="storagePage">
+        <h1>Storage</h1>
+        <div class="region">
+            <h2>Logging</h2>
+            <p>Cell data and output states can be stored into log files using an SD card.</p>
+            <form id="loggingForm" method="POST" action="savestorage.json" autocomplete="off">
+                <div class="settings">
+                    <div>
+                        <label for="loggingEnabled">SD card logging enabled</label>
+                        <input type="checkbox" name="loggingEnabled" id="loggingEnabled">
+                    </div>
+                    <div>
+                        <label for="loggingFreq">Cell data logging frequency (seconds)</label>
+                        <select name="loggingFreq" id="loggingFreq">
+                            <option>15</option>
+                            <option>30</option>
+                            <option>60</option>
+                            <option>90</option>
+                            <option>120</option>
+                            <option>300</option>
+                        </select>
+                    </div>
+                    <input type="submit" value="Save logging settings" />
+                </div>
+            </form>
+        </div>
+
+        <div class="region">
+            <h2>SD Card</h2>
+            <p id='sdcardmissing' class="warning">SD card not installed</p>
+            Used <span id="sdcard_used"></span>KiB (<span id="sdcard_used_percent"></span>%%) of <span
+                id="sdcard_total"></span>KiB
+            <p>
+                <button type="button" id="unmount">Unmount</button>
+                <button type="button" id="mount">Mount</button>
+            </p>
+            <h2>Flash Memory</h2>
+            Used <span id="flash_used"></span>KiB (<span id="flash_used_percent"></span>%%) of <span
+                id="flash_total"></span>KiB
+
+        </div>
+
     </div>
 
     <script type="text/javascript">

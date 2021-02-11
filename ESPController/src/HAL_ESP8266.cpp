@@ -8,8 +8,6 @@
 
 //PCF8574P has an i2c address of 0x38 instead of the normal 0x20
 
-//IF YOUR CONTROLLER DOESN'T RECOGNISE THE PCF CHIP, CHANGE 0x38 to 0x20 BELOW...
-
 //PCF857x pcf8574(0x38, &Wire);
 PCF857x pcf8574_0x20(0x20, &Wire);
 PCF857x pcf8574_0x38(0x38, &Wire);
@@ -95,7 +93,6 @@ void HAL_ESP8266::ConfigureI2C(void (*ExternalInputInterrupt)(void))
     //internal pullup-resistor on the interrupt line via ESP8266
     pcf8574->resetInterruptPin();
 
-    //TODO: Fix this for ESP32 different PIN
     attachInterrupt(digitalPinToInterrupt(PFC_INTERRUPT_PIN), ExternalInputInterrupt, FALLING);
 }
 
