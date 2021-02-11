@@ -58,7 +58,6 @@ HAL_ESP8266 hal;
 #include "Rules.h"
 
 volatile bool emergencyStop = false;
-volatile bool WifiDisconnected = true;
 
 Rules rules;
 
@@ -263,20 +262,22 @@ void processSyncEvent(NTPSyncEvent_t ntpEvent)
   if (ntpEvent < 0)
   {
     SERIAL_DEBUG.printf("Time Sync error: %d\n", ntpEvent);
+    /*
     if (ntpEvent == noResponse)
-      SERIAL_DEBUG.println(F("NTP server not reachable"));
+      SERIAL_DEBUG.println(F("NTP svr not reachable"));
     else if (ntpEvent == invalidAddress)
-      SERIAL_DEBUG.println(F("Invalid NTP server address"));
+      SERIAL_DEBUG.println(F("Invalid NTP svr address"));
     else if (ntpEvent == errorSending)
       SERIAL_DEBUG.println(F("Error sending request"));
     else if (ntpEvent == responseError)
       SERIAL_DEBUG.println(F("NTP response error"));
+      */
   }
   else
   {
     if (ntpEvent == timeSyncd)
     {
-      SERIAL_DEBUG.print(F("Got NTP time"));
+      SERIAL_DEBUG.print(F("NTP time "));
       time_t lastTime = NTP.getLastNTPSync();
       SERIAL_DEBUG.println(NTP.getTimeDateString(lastTime));
       setTime(lastTime);
@@ -617,24 +618,45 @@ void timerEnqueueCallback()
 
 void connectToWifi()
 {
-  if (WiFi.status() != WL_CONNECTED)
+  wl_status_t status = WiFi.status();
+  if (status == WL_CONNECTED)
   {
-    //SERIAL_DEBUG.println(F("Configuring Wi-Fi STA..."));
-    WiFi.mode(WIFI_STA);
-
-    char hostname[40];
-
-    sprintf(hostname, "DIYBMS-%08X", ESP.getChipId());
-    wifi_station_set_hostname(hostname);
-    WiFi.hostname(hostname);
-
-    SERIAL_DEBUG.print(F("Hostname: "));
-    SERIAL_DEBUG.print(hostname);
-    SERIAL_DEBUG.println(F("  Connecting to Wi-Fi..."));
-    WiFi.begin(DIYBMSSoftAP::WifiSSID(), DIYBMSSoftAP::WifiPassword());
+    return;
   }
 
-  WifiDisconnected = false;
+  /*
+WiFi.status() only returns:
+
+    switch(status) {
+        case STATION_GOT_IP:
+            return WL_CONNECTED;
+        case STATION_NO_AP_FOUND:
+            return WL_NO_SSID_AVAIL;
+        case STATION_CONNECT_FAIL:
+        case STATION_WRONG_PASSWORD:
+            return WL_CONNECT_FAILED;
+        case STATION_IDLE:
+            return WL_IDLE_STATUS;
+        default:
+            return WL_DISCONNECTED;
+    }
+*/
+
+  WiFi.mode(WIFI_STA);
+
+  char hostname[40];
+
+  sprintf(hostname, "DIYBMS-%08X", ESP.getChipId());
+  wifi_station_set_hostname(hostname);
+  WiFi.hostname(hostname);
+
+  SERIAL_DEBUG.print(F("Hostname: "));
+  SERIAL_DEBUG.print(hostname);
+  SERIAL_DEBUG.print(F(" Current state: "));
+  SERIAL_DEBUG.print((uint8_t)status);
+
+  SERIAL_DEBUG.println(F(",Connect to Wi-Fi..."));
+  WiFi.begin(DIYBMSSoftAP::WifiSSID(), DIYBMSSoftAP::WifiPassword());
 }
 
 void connectToMqtt()
@@ -795,21 +817,18 @@ void sdcardaction_callback(uint8_t action)
   _sd_card_installed = false;
 }
 
-#if defined(ESP8266)
 void onWifiConnect(const WiFiEventStationModeGotIP &event)
 {
-#else
-void onWifiConnect(WiFiEvent_t event, WiFiEventInfo_t info)
-{
-#endif
 
-  SERIAL_DEBUG.print(F("Wi-Fi status="));
-  SERIAL_DEBUG.print(WiFi.status());
-  SERIAL_DEBUG.print(F(". Connected IP:"));
+  SERIAL_DEBUG.print(F("onWifiConnect status="));
+  SERIAL_DEBUG.println(WiFi.status());
+  SERIAL_DEBUG.print(F("Connected IP:"));
   SERIAL_DEBUG.println(WiFi.localIP());
+  SERIAL_DEBUG.print(F("Hostname:"));
+  SERIAL_DEBUG.println(WiFi.hostname().c_str());
 
-  SERIAL_DEBUG.print(F("Request NTP from "));
-  SERIAL_DEBUG.println(mysettings.ntpServer);
+  //SERIAL_DEBUG.print(F("Request NTP from "));
+  //SERIAL_DEBUG.println(mysettings.ntpServer);
 
   //Update time every 20 minutes
   NTP.setInterval(1200);
@@ -849,14 +868,14 @@ void onWifiConnect(WiFiEvent_t event, WiFiEventInfo_t info)
   // - second argument is the IP address to advertise
   //   we send our IP address on the WiFi network
 
-  if (!MDNS.begin(WiFi.hostname()))
-  {
-    SERIAL_DEBUG.println("Error setting up MDNS responder!");
-  }
-  else
+  if (MDNS.begin(WiFi.hostname().c_str(), WiFi.localIP()))
   {
     // Add service to MDNS-SD
     MDNS.addService("http", "tcp", 80);
+  }
+  else
+  {
+    SERIAL_DEBUG.println("Error setting up MDNS responder!");
   }
 }
 
@@ -864,17 +883,14 @@ void onWifiDisconnect(const WiFiEventStationModeDisconnected &event)
 {
   SERIAL_DEBUG.println(F("Disconnected from Wi-Fi."));
 
-  //Indicate to loop() to reconnect, seems to be
-  //ESP issues using Wifi from timers - https://github.com/espressif/arduino-esp32/issues/2686
-  WifiDisconnected = true;
-
   // ensure we don't reconnect to MQTT while reconnecting to Wi-Fi
   mqttReconnectTimer.detach();
   myTimerSendMqttPacket.detach();
   myTimerSendMqttStatus.detach();
   myTimerSendInfluxdbPacket.detach();
 
-  //wifiReconnectTimer.once(2, connectToWifi);
+  NTP.stop();
+  MDNS.end();
 }
 
 void onMqttDisconnect(AsyncMqttClientDisconnectReason reason)
@@ -922,7 +938,7 @@ void sendMqttStatus()
   SERIAL_DEBUG.print('=');
   SERIAL_DEBUG.println(jsonbuffer);
 #endif
- //Output bank level information (just voltage for now)
+  //Output bank level information (just voltage for now)
   for (int8_t bank = 0; bank < mysettings.totalNumberOfBanks; bank++)
   {
     doc.clear();
@@ -932,13 +948,13 @@ void sendMqttStatus()
     sprintf(topic, "%s/bank/%d", mysettings.mqtt_topic, bank);
     mqttClient.publish(topic, 0, false, jsonbuffer);
 #if defined(MQTT_LOGGING)
-  SERIAL_DEBUG.print("MQTT - ");
-  SERIAL_DEBUG.print(topic);
-  SERIAL_DEBUG.print('=');
-  SERIAL_DEBUG.println(jsonbuffer);
+    SERIAL_DEBUG.print("MQTT - ");
+    SERIAL_DEBUG.print(topic);
+    SERIAL_DEBUG.print('=');
+    SERIAL_DEBUG.println(jsonbuffer);
 #endif
   }
-	
+
   //Using Json for below reduced MQTT messages from 14 to 2. Could be combined into same json object too. But even better is status + event driven.
   doc.clear(); // Need to clear the json object for next message
   sprintf(topic, "%s/rule", mysettings.mqtt_topic);
@@ -1399,8 +1415,6 @@ void setup()
 
   hal.ConfigureI2C(ExternalInputInterrupt);
 
-
-
   //Pre configure the array
   memset(&cmi, 0, sizeof(cmi));
   for (size_t i = 0; i < maximum_controller_cell_modules; i++)
@@ -1419,11 +1433,10 @@ void setup()
   LoadConfiguration();
 
   //Force logging off for ESP8266
-  mysettings.loggingEnabled=false;
+  mysettings.loggingEnabled = false;
 
   InputsEnabled = hal.InputsEnabled;
   OutputsEnabled = hal.OutputsEnabled;
-
 
   //Set relay defaults
   for (int8_t y = 0; y < RELAY_TOTAL; y++)
@@ -1466,7 +1479,6 @@ void setup()
   clearAPSettings = digitalRead(RESET_WIFI_PIN);
   hal.GreenLedOff();
 
-  
   SERIAL_DATA.begin(COMMS_BAUD_RATE, SERIAL_8N1); // Serial for comms to modules
   //Use alternative GPIO pins of D7/D8
   //D7 = GPIO13 = RECEIVE SERIAL
@@ -1496,13 +1508,11 @@ void setup()
   else
   {
 
-#if defined(ESP8266)
     //Config NTP
     NTP.onNTPSyncEvent([](NTPSyncEvent_t event) {
       ntpEvent = event;
       NTPsyncEventTriggered = true;
     });
-#endif
 
     SERIAL_DEBUG.println(F("Connecting to WIFI"));
 
@@ -1541,16 +1551,29 @@ void setup()
 
     //We have just started...
     SetControllerState(ControllerState::Stabilizing);
+
+    //Attempt connection in setup(), loop() will also try every 30 seconds
+    connectToWifi();
   }
 }
+
+unsigned long wifitimer = 0;
 
 void loop()
 {
   //ESP_LOGW("LOOP","LOOP");
+  unsigned long currentMillis = millis();
 
-  if (WifiDisconnected && ControlState != ControllerState::ConfigurationSoftAP)
+  if (ControlState != ControllerState::ConfigurationSoftAP)
   {
-    connectToWifi();
+    //on first pass wifitimer is zero
+    if (currentMillis - wifitimer > 30000)
+    {
+      //Attempt to connect to WiFi every 30 seconds, this caters for when WiFi drops
+      //such as AP reboot, its written to return without action if we are already connected
+      connectToWifi();
+      wifitimer = currentMillis;
+    }
   }
 
   ArduinoOTA.handle();
@@ -1558,11 +1581,11 @@ void loop()
   // Call update to receive, decode and process incoming packets.
   myPacketSerial.checkInputStream();
 
-#if defined(ESP8266)
   if (NTPsyncEventTriggered)
   {
     processSyncEvent(ntpEvent);
     NTPsyncEventTriggered = false;
   }
-#endif
+
+  MDNS.update();
 }
