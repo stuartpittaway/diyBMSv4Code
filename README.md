@@ -4,11 +4,16 @@ Version 4 of the diyBMS.  Do-it-yourself battery management system for Lithium i
 
 If you are looking for version 3 of this project take a look here https://github.com/stuartpittaway/diyBMS
 
+THIS REPOSITORY IS FOR THE ESP8266 BASED CONTROLLER BOARD (ORIGINAL/LEGACY)
+
+The newest ESP32 based code can be found here https://github.com/stuartpittaway/diyBMSv4ESP32
+
+
 # Support the project
 
 If you find the BMS useful, please consider buying me a beer, check out [Patreon](https://www.patreon.com/StuartP) for more information.
 
-You can also send beer tokens via Paypal - [paypal.me/stuart2222](https://www.paypal.com/paypalme/my/profile)
+You can also send beer tokens via Paypal - [paypal.me/stuart2222](https://paypal.me/stuart2222)
 
 Any donations go towards the on going development and prototype costs of the project.
 
@@ -35,9 +40,9 @@ If you discover a bug or want to make a feature suggestion, open a Github issue
 
 This release removes the need to manually compile the code yourself, instead GITHUB Actions are now used to build the code for you automatically.
 
-The files you will need are held as ZIP files in [Releases](https://github.com/stuartpittaway/diyBMSv4Code/releases)
+The files you will need are held as a ZIP file in [Releases](https://github.com/stuartpittaway/diyBMSv4Code/releases)
 
-Download the ZIP file and *extract its contents* and inside the folder you should find:
+Download the ZIP file named "Compiled_Firmware_YYYY-MM-DD-HH-MM.zip" and *extract its contents* and inside the folder you should find:
 
 *Files for the controller (ESP8266)*
 * diybms_controller_firmware_espressif8266_esp8266_d1mini.bin
@@ -57,7 +62,7 @@ You will need to determine which module HEX file to use (see "Identify which mod
 
 ## Programming the controller
 
-Both [Wemos D1 Mini](https://amzn.to/3i1gPIz) and Wemos D1 Mini & Pro are supported - minimum of 4MB flash memory, ESP32 version coming soon.
+Both [Wemos D1 Mini](https://amzn.to/3i1gPIz) and Wemos D1 Mini & Pro are supported - minimum of 4MB flash memory.
 
 1. Connect the WEMOS D1 to the computer using a USB cable
 1. Download the [esphome-flasher](https://github.com/esphome/esphome-flasher/releases) tool for your operating system
