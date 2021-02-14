@@ -53,7 +53,6 @@ void HAL_ESP8266::ConfigureI2C(void (*ExternalInputInterrupt)(void))
     //D5 is interrupt pin from PCF8574
     pinMode(PFC_INTERRUPT_PIN, INPUT_PULLUP);
 
-
     //Default
     pcf8574 = &pcf8574_0x20;
 
@@ -63,6 +62,10 @@ void HAL_ESP8266::ConfigureI2C(void (*ExternalInputInterrupt)(void))
     {
         pcf8574 = &pcf8574_0x38;
         SERIAL_DEBUG.println(F("PCF8574 at address 0x38"));
+    }
+    else
+    {
+        SERIAL_DEBUG.println(F("PCF8574 at address 0x20"));
     }
 
     //Make PINs 4-7 INPUTs - the interrupt fires when triggered
