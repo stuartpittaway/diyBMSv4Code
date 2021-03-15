@@ -55,6 +55,7 @@ Download the ZIP file named "Compiled_Firmware_YYYY-MM-DD-HH-MM.zip" and *extrac
 * module_fw_V420_SWAPR19R20_attiny841_420_SWAPR19R20_eF4_hD6_l62.hex
 * module_fw_V421_attiny841_421_eF4_hD6_l62.hex
 * module_fw_V421_LTO_attiny841_421_eF4_hD6_l62.hex
+* module_fw_V440_attiny841_440_eF4_hD6_l6C.hex
 
 You can ignore the "filesystemimage" for the esp8266, this is no longer required.
 
@@ -210,10 +211,9 @@ https://github.com/stuartpittaway/diyBMSv4
 
 * V421 = JLCPCB built board (marked DIYBMS v4.21 on silkscreen) - has 20 small resistors (marked 6R20) and machine soldered using 0603 sized parts (R19 is in middle of resistor array)
 
-* V430 = JLCPCB built board (marked DIYBMS v4.3 on silkscreen) - not released to public - experimental version - DO NOT USE THIS WITH A LOWER VERSION BOARD!!
+* V440 = Marked DIYBMS v4.4 on silkscreen, released Feb 2021 - DO NOT USE THIS CODE WITH OLDER VERSION BOARDS
 
 Open the module code, navigate to platformio environment "env:attiny841_VXXX", (where XXX is the version from above).  Connect your USBASP programmer to the module and select "Upload"
-
 
 # WARNING
 

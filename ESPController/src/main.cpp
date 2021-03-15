@@ -401,6 +401,7 @@ void ProcessRules()
   if (receiveProc.HasCommsTimedOut())
   {
     rules.SetError(InternalErrorCode::CommunicationsError);
+    rules.rule_outcome[Rule::BMSError] = true;
   }
 
   uint8_t cellid = 0;
@@ -454,6 +455,7 @@ void ProcessRules()
   if (ControlState == ControllerState::Running && rules.zeroVoltageModuleCount > 0)
   {
     rules.SetError(InternalErrorCode::ZeroVoltModule);
+    rules.rule_outcome[Rule::BMSError] = true;
   }
 
   rules.RunRules(
