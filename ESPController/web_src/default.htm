@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code&display=swap" rel="stylesheet" />
+    <link href="style.css" rel="stylesheet" />
+    <script type="text/javascript">
+        const MAXIMUM_NUMBER_OF_BANKS = 16;
+        const MAXIMUM_NUMBER_OF_MODULES_PER_DATA_PACKET = 16;
+
+        var DEFAULT_GRAPH_MAX_VOLTAGE = parseFloat('%graph_voltagehigh%');
+        var DEFAULT_GRAPH_MIN_VOLTAGE = parseFloat('%graph_voltagelow%');
+        var XSS_KEY = '%XSS_KEY%';
+    </script>
+    <script type='text/javascript' src='jquery.js' integrity='%integrity_file_jquery_js%' crossorigin='anonymous'>
+    </script>
+    <title>DIY BMS CONTROLLER v4</title>
+</head>
+
+<body>
+    <div id="loading"><img src="wait.png" width="64" height="64" alt="Please wait" /></div>
+    <div class="header">
+        <div class="logocontainer"><img class="logo" src="logo.png" width="152" height="48" alt="DIYBMS" /></div>
+        <div class="header-right">
+            <a id="home" class="active" href="#home">Home</a>
+            <a id="modules" href="#modules">Modules</a>
+            <a id="settings" href="#settings">Settings</a>
+            <a id="rules" href="#rules">Rules</a>
+            <a id="integration" href="#integration">Integration</a>
+            <!--<a id="storage" href="#storage">Storage</a>-->
+            <a id="about" href="#about">About</a>
+        </div>
+    </div>
+    <div class="flexgrid">      
+        <div id='error1' class='error'>The controller is having difficulty communicating with the cell monitoring modules.</div>
+        <div id='error2' class='error'>Controller found <span id='missingmodule1'></span> modules, but is configured for <span id='missingmodule2'></span>.</div>
+        <div id='error3' class='error'>Controller is configured to use more modules than it can cope with.</div>
+        <div id='error4' class='error'>Waiting for modules to reply</div>
+        <div id='error5' class='error'>Module has returned ZERO volt reading, check configuration</div>
+        <div id='error6' class='error'>Controller has run out of memory.</div>
+
+        <div id='iperror' class='error'>Cannot communicate with the controller for status updates.</div>
+        <div id='genericerror' class='error'>Controller error <span id="genericerrcode"></span></div>
+
+        <div id='jslibrary' class='error'>Javascript library has failed to load correctly, please refresh page.</div>
+        <div id='saveerror' class='error'>Failed to save settings.</div>
+        <div id='savesuccess' class='success'>Settings saved</div>
+
+        <div id='genericwarning' class='warning'>Controller warning <span id="genericwarningcode"></span></div>
+
+        <div id='warning1' class='warning'>Warning: Module bypass voltage is different to global setting</div>
+        <div id='warning2' class='warning'>Warning: Module bypass temperature is different to global setting</div>
+        <div id='warning3' class='warning'>Warning: Modules have mixed versions of code, may cause instability</div>
+        <div id='warning4' class='warning'>Warning: Modules have mixed versions of hardware/boards</div>
+        <div id='warning5' class='warning'>Warning: Logging enabled but SD card not installed/found</div>
+    </div>
+    <div id="info" class="info">
+        <div id="current" class="stat"><span class="x t">Current:</span><span class="x v"></span></div>
+        <div id="sent" class="stat"><span class="x t">Packets sent:</span><span class="x v"></span></div>
+        <div id="received" class="stat"><span class="x t">Packets rec'd:</span><span class="x v"></span></div>
+        <div id="oos" class="stat"><span class="x t" title="Out of sequence error">OOS errors:</span><span
+                class="x v"></span></div>
+        <div id="roundtrip" class="stat"><span class="x t">Roundtrip (ms):</span><span class="x v"></span></div>
+        <div id="badcrc" class="stat"><span class="x t">CRC Errors:</span><span class="x v"></span></div>
+        <div id="ignored" class="stat"><span class="x t">Ignored request errors:</span><span class="x v"></span></div>
+
+    </div>
+    <div class="page" id="homePage">
+        <div class="graphs">
+            <div id="graph1" style="width:100%%; height:100%%;"></div>
+            <div id="graph2" style="width:100%%; height:100%%;"></div>
+        </div>
+        <div id="graphOptions">
+            <a id='view2d' href="">2D</a>
+            <a id='view3d' href="">3D</a>
+        </div>
+    </div>
+
+    <div class="page" id="aboutPage">
+        <h1>About</h1>
+        <div class="region">
+            <h2>Source Code &amp; Hardware</h2>
+            <p>Code:<a href="https://github.com/stuartpittaway/diyBMSv4code" rel="noreferrer"
+                target="_blank">https://github.com/stuartpittaway/diyBMSv4code</a></p>
+                <p>Hardware: <a href="https://github.com/stuartpittaway/diyBMSv4" rel="noreferrer"
+                target="_blank">https://github.com/stuartpittaway/diyBMSv4</a></p>
+        </div>
+        <div class="region">
+            <h2>Videos</h2>
+            <a href="https://youtube.com/playlist?list=PLHhwQCDPuRcZW3u0jJucsiCCsUbNbMy-c" rel="noreferrer" target="_blank">YouTube videos on
+                installation and configuration</a>
+        </div>
+        <div class="region">
+            <h2>WARNING</h2>
+            <p>This is a DIY product/solution so don’t use this for safety critical systems or in any situation where
+                there could be a risk to life.</p>
+            <p>There is no warranty, it may not work as expected or at all.</p>
+            <p>The use of this project is done so entirely at your own risk. It may involve electrical voltages which
+                could kill - if in doubt, seek help.</p>
+            <p>The use of this project may not be compliant with local laws or regulations - if in doubt, seek help.</p>
+        </div>
+        <div class="region">
+            <h2>Patreon</h2>
+            <p>Remember, this product is free for personal use, if you would like to make a regular donation to keep the
+                features and improvements flowing, use the Patreon link below. Even just a coffee/beer a month makes a
+                difference. Thank you!
+                <a href="https://www.patreon.com/StuartP" rel="noreferrer" target="_blank"><img src="patron.png"
+                        width="176" height="34" alt="Patron" /></a>
+            </p>
+        </div>
+        <div class="region">
+            <h2>License</h2>
+            <p>This work is licensed under a Creative Commons Attribution-NonCommercial-ShareAlike 2.0 UK: England &
+                Wales License.</p>
+            <a href="https://creativecommons.org/licenses/by-nc-sa/2.0/uk/" rel="noreferrer"
+                target="_blank">https://creativecommons.org/licenses/by-nc-sa/2.0/uk/</a>
+        </div>
+        <div class="region">
+            <h2>Platform &amp; Version</h2>
+            <p>Processor: %PLATFORM%</p>
+            <p>Version: <a href="https://github.com/stuartpittaway/diyBMSv4Code/commit/%GIT_VERSION%" rel="noreferrer"
+                    target="_blank">%GIT_VERSION%</a></p>
+            <p>Compiled: %COMPILE_DATE_TIME%</p>
+            <p>Free block size:<span id="FreeBlockSize"></span></p>
+            <p>Free heap:<span id="FreeHeap"></span></p>
+        </div>
+    </div>
+    <div class="page" id="modulesPage">
+        <h1>Modules</h1>
+        <div class="region wide">
+            <table id="modulesTable">
+                <thead>
+                    <tr>
+                        <th>Bank</th>
+                        <th>Module</th>
+                        <th>Voltage</th>
+                        <th class='hide'>V. Min</th>
+                        <th class='hide'>V. Max</th>
+                        <th class='hide'>Temp Int °C</th>
+                        <th class='hide'>Temp Ext °C</th>
+                        <th class='hide'>Bypass PWM %</th>
+                        <th class='hide'>Bad packet count</th>
+                        <th class='hide'>Packets received</th>
+                        <th class='hide'>Balance energy used (mAh)</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody class="rows" id="modulesRows">
+
+                </tbody>
+            </table>
+            <div id="settingConfig">
+                <h2>Settings for module </h2>
+                <form id="settingsForm" method="POST" action="savesetting.json" autocomplete="off">
+                    <div class="settings">
+                        <input name="b" id="b" type="hidden" value="">
+                        <input name="m" id="m" type="hidden" value="">
+                        <input name="c" id="c" type="hidden" value="">
+                        <div>
+                            <label for="ModuleId">Module Id</label>
+                            <input type="number" name="ModuleId" id="ModuleId" value="" readonly="">
+                        </div>
+                        <div>
+                            <label for="Version">Module version</label>
+                            <span name="Version" id="Version"></span>
+                        </div>
+                        <div>
+                            <label for="BypassOverTempShutdown">Bypass over temperature</label>
+                            <input type="number" min="20" max="90" step="1" name="BypassOverTempShutdown"
+                                id="BypassOverTempShutdown" value="70" required="">
+                        </div>
+                        <div>
+                            <label for="BypassThresholdmV">Bypass threshold mV</label>
+                            <input type="number" min="1800" max="4500" step="10" name="BypassThresholdmV"
+                                id="BypassThresholdmV" value="4100" required="">
+                        </div>
+                        <div>
+                            <label for="Calib">Calibration multiplier</label>
+                            <input id="Calib" name="Calib" type="number" min="1" max="5" step="0.0001" value="2.100"
+                                required="">
+                            <label for="ActualVoltage">Calculator - Actual measured voltage</label>
+                            <input id="ActualVoltage" name="ActualVoltage" type="number" min="0" max="5" step="0.001"
+                                value="4.2">
+                            <button type="button" id="CalculateCalibration">Calculate</button>
+                        </div>
+                        <div>
+                            <label for="ExtBCoef">External temperature BCoef</label>
+                            <input type="number" min="0" max="9999" step="1" id="ExtBCoef" name="ExtBCoef" value=""
+                                readonly="">
+                        </div>
+                        <div>
+                            <label for="IntBCoef">Internal temperature BCoef</label>
+                            <input type="number" min="0" max="9999" step="1" id="IntBCoef" name="IntBCoef" value=""
+                                readonly="">
+                        </div>
+                        <div>
+                            <label for="LoadRes">Load resistance</label>
+                            <input id="LoadRes" name="LoadRes" type="number" value="" readonly="">
+                        </div>
+                        <div>
+                            <label for="mVPerADC">mV per ADC reading</label>
+                            <input id="mVPerADC" name="mVPerADC" type="number" value="" readonly="">
+                        </div>
+
+                        <input type="submit" value="Save settings" />
+                    </div>
+                </form>
+            </div>
+        </div>
+        <div id="globalConfig" class="region">
+            <h2>Global Settings</h2>
+            <p>Configure all modules to use following parameters:</p>
+            <form id="globalSettingsForm" method="POST" action="saveglobalsetting.json" autocomplete="off">
+                <div class="settings">
+                    <div>
+                        <label for="g1">Bypass over temperature</label>
+                        <input type="number" min="20" max="90" step="1" name="BypassOverTempShutdown" id="g1" value="65"
+                            required="">
+                    </div>
+                    <div>
+                        <label for="g2">Bypass threshold mV</label>
+                        <input type="number" min="1800" max="4500" step="10" name="BypassThresholdmV" id="g2"
+                            value="4100" required="">
+                    </div>
+                </div>
+                <input id="globalSettingsButton" type="submit" value="Save settings" />
+            </form>
+        </div>
+    </div>
+
+    <div class="page" id="integrationPage">
+        <h1>Integration</h1>
+        <p>For security, you will need to re-enter the password for the service(s) you want to enable or modify, before
+            you save.</p>
+        <p>After changes are made, the controller will need to be rebooted, do this manually.</p>
+        <div class="region">
+            <h2>MQTT</h2>
+            <form id="mqttForm" method="POST" action="savemqtt.json" autocomplete="off">
+                <div class="settings">
+                    <div>
+                        <label for="mqttEnabled">Enabled</label>
+                        <input type="checkbox" name="mqttEnabled" id="mqttEnabled">
+                    </div>
+                    <div>
+                        <label for="mqttTopic">Topic</label>
+                        <input type="input" name="mqttTopic" id="mqttTopic" value="diybms" required="" maxlength="32">
+                    </div>
+                    <div>
+                        <label for="mqttServer">Server</label>
+                        <input type="input" name="mqttServer" id="mqttServer" value="" required="" maxlength="64">
+                    </div>
+                    <div>
+                        <label for="mqttPort">Port</label>
+                        <input type="number" min="1" max="65535" step="1" name="mqttPort" id="mqttPort" value="1883"
+                            required="">
+                    </div>
+                    <div>
+                        <label for="mqttUsername">Username</label>
+                        <input type="input" autocomplete="username" name="mqttUsername" id="mqttUsername" value=""
+                            required="" maxlength="32">
+                    </div>
+                    <div>
+                        <label for="mqttPassword">Password</label>
+                        <input type="password" autocomplete="current-password" name="mqttPassword" id="mqttPassword"
+                            value="" required="" maxlength="32">
+                    </div>
+                    <input type="submit" value="Save MQTT settings" />
+                </div>
+            </form>
+        </div>
+
+        <div class="region">
+            <h2>Influx Database</h2>
+            <form id="influxForm" method="POST" action="saveinfluxdb.json" autocomplete="off">
+                <div class="settings">
+                    <div>
+                        <label for="influxEnabled">Enabled</label>
+                        <input type="checkbox" name="influxEnabled" id="influxEnabled">
+                    </div>
+                    <div>
+                        <label for="influxServer">Host server</label>
+                        <input type="input" name="influxServer" id="influxServer" value="influx" required=""
+                            maxlength="64">
+                    </div>
+                    <div>
+                        <label for="influxPort">Port</label>
+                        <input type="number" min="1" max="65535" step="1" name="influxPort" id="influxPort" value="1883"
+                            required="">
+                    </div>
+                    <div>
+                        <label for="influxDatabase">Database name</label>
+                        <input type="input" name="influxDatabase" id="influxDatabase" value="database" required=""
+                            maxlength="64">
+                    </div>
+                    <div>
+                        <label for="influxUsername">Username</label>
+                        <input type="input" autocomplete="username" name="influxUsername" id="influxUsername"
+                            value="myusername" required="" maxlength="32">
+                    </div>
+                    <div>
+                        <label for="influxPassword">Password</label>
+                        <input type="password" autocomplete="current-password" name="influxPassword" id="influxPassword"
+                            value="" required="" maxlength="32">
+                    </div>
+                    <input type="submit" value="Save Influx DB settings" />
+                </div>
+            </form>
+        </div>
+    </div>
+    <div class="page" id="rulesPage">
+        <h1>Controller Settings</h1>
+        <div class="region">
+            <h2>Rules</h2>
+            <p>DIYBMS supports relay modules to safely disconnect chargers, contactors or consumers. The rules allow you
+                to configure the relays for your situation.</p>
+            <p>Rules are processed from lowest priorty to highest (bottom up). Control the relays using the options. A
+                value of "X" means
+                don't care/leave at value defined by lower priority rules.</p>
+            <p>Rules are triggered when the relevant value meets or exceeds the 'trigger' value. The rule will only
+                disable
+                when the value then passes the 'reset' value. This can help prevent relay clatter and rules firing
+                on/off
+                rapidly.</p>
+            <p>'Timer 1' and 'Timer 2' rules allow timed operation, this rule is active when the number of minutes past
+                midnight has been reached, for instance setting 'Timer 1' trigger to 495 and reset to 555 would switch
+                on at 8:15am
+                and off at 9:15am. This only
+                works if connected to internet for regular time updates. Minutes since midnight now is: <span
+                    id='minutesnow'></span></p>
+            <p>Emergency stop is triggered by connector J1, once triggered controller needs to be reset to disable.</p>
+            <div id='ExternalIO'>External I/O interface is NOT connected, relay control not possible!</div>
+        </div>
+        <div class="region">
+
+            <form id="rulesForm" method="POST" action="saverules.json" autocomplete="off">
+                <div class="settings">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Rule</th>
+                                <th>Trigger value</th>
+                                <th>Reset value</th>
+                                <th>Relay state</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><label for="rule1value">Emergency stop</label></td>
+                                <td><input type="hidden" name="rule1value" id="rule1value" value="0"></td>
+                                <td><input type="hidden" name="rule1hysteresis" id="rule1hysteresis" value="0"></td>
+                                <td class="relayset"></td>
+                            </tr>
+                            <tr>
+                                <td><label for="rule2value">Internal BMS error</label></td>
+                                <td><input type="hidden" name="rule2value" id="rule2value" value="0"></td>
+                                <td><input type="hidden" name="rule2hysteresis" id="rule2hysteresis" value="0"></td>
+                                <td class="relayset"></td>
+                            </tr>
+                            <tr>
+                                <td><label for="rule3value">Individual cell over voltage (mV)</label></td>
+                                <td><input type="number" min="1800" max="4500" step="10" name="rule3value"
+                                        id="rule3value" value="4100" required=""></td>
+                                <td><input type="number" min="1800" max="4500" step="10" name="rule3hysteresis"
+                                        id="rule3hysteresis" value="4100" required=""></td>
+                                <td class="relayset"></td>
+                            </tr>
+                            <tr>
+                                <td><label for="rule4value">Cell under voltage (mV)</label></td>
+                                <td><input type="number" min="1800" max="4500" step="10" name="rule4value"
+                                        id="rule4value" value="3000" required=""></td>
+                                <td><input type="number" min="1800" max="4500" step="10" name="rule4hysteresis"
+                                        id="rule4hysteresis" value="3000" required=""></td>
+                                <td class="relayset"></td>
+                            </tr>
+                            <tr>
+                                <td><label for="rule5value">Module over temperature (internal) °C</label></td>
+                                <td><input type="number" min="0" max="90" step="1" name="rule5value" id="rule5value"
+                                        value="60" required=""></td>
+                                <td><input type="number" min="0" max="90" step="1" name="rule5hysteresis"
+                                        id="rule5hysteresis" value="55" required=""></td>
+                                <td class="relayset"></td>
+                            </tr>
+                            <tr>
+                                <td><label for="rule6value">Module under temperature (internal) °C</label></td>
+                                <td><input type="number" min="0" max="90" step="1" name="rule6value" id="rule6value"
+                                        value="5" required=""></td>
+                                <td><input type="number" min="0" max="90" step="1" name="rule6hysteresis"
+                                        id="rule6hysteresis" value="6" required=""></td>
+                                <td class="relayset"></td>
+                            </tr>
+                            <tr>
+                                <td><label for="rule7value">Cell over temperature (external) °C</label></td>
+                                <td><input type="number" min="0" max="90" step="1" name="rule7value" id="rule7value"
+                                        value="45" required=""></td>
+                                <td><input type="number" min="0" max="90" step="1" name="rule7hysteresis"
+                                        id="rule7hysteresis" value="45" required=""></td>
+                                <td class="relayset"></td>
+                            </tr>
+                            <tr>
+                                <td><label for="rule8value">Cell under temperature (external) °C</label></td>
+                                <td><input type="number" min="0" max="90" step="1" name="rule8value" id="rule8value"
+                                        value="5" required=""></td>
+                                <td><input type="number" min="0" max="90" step="1" name="rule8hysteresis"
+                                        id="rule8hysteresis" value="6" required=""></td>
+                                <td class="relayset"></td>
+                            </tr>
+                            <tr>
+                                <td><label for="rule9value">Pack over voltage (mV)</label></td>
+                                <td><input type="number" min="1000" max="99999999" step="100" name="rule9value"
+                                        id="rule9value" value="16000" required=""></td>
+                                <td><input type="number" min="1000" max="99999999" step="100" name="rule9hysteresis"
+                                        id="rule9hysteresis" value="16000" required=""></td>
+                                <td class="relayset"></td>
+                            </tr>
+                            <tr>
+                                <td><label for="rule10value">Pack under voltage (mV)</label></td>
+                                <td><input type="number" min="1000" max="99999999" step="100" name="rule10value"
+                                        id="rule10value" value="12000" required=""></td>
+                                <td><input type="number" min="1000" max="99999999" step="100" name="rule10hysteresis"
+                                        id="rule10hysteresis" value="12000" required=""></td>
+                                <td class="relayset"></td>
+                            </tr>
+                            <tr>
+                                <td><label for="rule11value">Timer 2</label></td>
+                                <td><input type="number" min="0" max="1440" step="1" name="rule11value" id="rule11value"
+                                        value="0" required=""></td>
+                                <td><input type="number" min="0" max="1440" step="1" name="rule11hysteresis"
+                                        id="rule11hysteresis" value="0" required=""></td>
+                                <td class="relayset"></td>
+                            </tr>
+                            <tr>
+                                <td><label for="rule12value">Timer 1</label></td>
+                                <td><input type="number" min="0" max="1440" step="1" name="rule12value" id="rule12value"
+                                        value="0" required=""></td>
+                                <td><input type="number" min="0" max="1440" step="1" name="rule12hysteresis"
+                                        id="rule12hysteresis" value="0" required=""></td>
+                                <td class="relayset"></td>
+                            </tr>
+                            <tr>
+                                <td><label for="defaultvalue">Relay default</label></td>
+                                <td>&nbsp;</td>
+                                <td>&nbsp;</td>
+                                <td class="relayset">
+                                    <select id="defaultrelay1" name="defaultrelay1">
+                                        <option>On</option>
+                                        <option>Off</option>
+                                    </select>
+                                    <select id="defaultrelay2" name="defaultrelay2">
+                                        <option>On</option>
+                                        <option>Off</option>
+                                    </select>
+                                    <select id="defaultrelay3" name="defaultrelay3">
+                                        <option>On</option>
+                                        <option>Off</option>
+                                    </select>
+                                    <select id="defaultrelay4" name="defaultrelay4">
+                                        <option>On</option>
+                                        <option>Off</option>
+                                    </select></td>
+                            </tr>
+                            <tr>
+                                <td><label for="relaytype">Relay type</label></td>
+                                <td>&nbsp;</td>
+                                <td>&nbsp;</td>
+                                <td class="relayset">
+                                    <select id="relaytype1" name="relaytype1">
+                                        <option>Std</option>
+                                        <option>Pulse</option>
+                                    </select>
+                                    <select id="relaytype2" name="relaytype2">
+                                        <option>Std</option>
+                                        <option>Pulse</option>
+                                    </select>
+                                    <select id="relaytype3" name="relaytype3">
+                                        <option>Std</option>
+                                        <option>Pulse</option>
+                                    </select>
+                                    <select id="relaytype4" name="relaytype4">
+                                        <option>Std</option>
+                                        <option>Pulse</option>
+                                    </select></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <input type="submit" value="Save rules" />
+            </form>
+        </div>
+    </div>
+
+    <div class="page" id="settingsPage">
+        <h1>Controller Settings</h1>
+        <div class="region">
+            <h2>Modules &amp; Banks</h2>
+            <p>DIYBMS supports up to 100 modules in total. These modules can be split into banks to support parallel
+                configurations.</p>
+            <p>Example: You have 16 cells configured as 8 in series and 2 in parallel (8S2P).</p>
+            <form id="banksForm" method="POST" action="savebankconfig.json" autocomplete="off">
+                <div class="settings">
+                    <div>
+                        <label for="totalSeriesModules">Number of series cells (eg. 8S)</label>
+                        <select name="totalSeriesModules" id="totalSeriesModules">
+                        </select>
+                    </div>
+                    <div>
+                        <label for="totalBanks">Number of parallel banks (eg. 2P)</label>
+                        <select name="totalBanks" id="totalBanks">
+                        </select>
+                    </div>
+                    <input type="submit" value="Save module &amp; bank settings" />
+                </div>
+            </form>
+        </div>
+
+        <div class="region">
+            <h2>Network Time Protocol</h2>
+            <p>Time is set via NTP, if your controller is not connected to the Internet. Time based rules will be
+                incorrect. This does not automatically correct for daylight saving.</p>
+            <p>Time now is <span id="timenow"></span></p>
+            <form id="ntpForm" method="POST" action="saventp.json" autocomplete="off">
+                <div class="settings">
+                    <div>
+                        <label for="NTPServer">NTP Server</label>
+                        <input type="input" name="NTPServer" id="NTPServer" value="" required="" maxlength="64">
+                    </div>
+                    <div>
+                        <label for="NTPZoneHour">Timezone (hour)</label>
+                        <input type="number" min="-23" max="23" step="1" name="NTPZoneHour" id="NTPZoneHour" value="0"
+                            required="">
+                    </div>
+                    <div>
+                        <label for="NTPZoneMin">Timezone (minute)</label>
+                        <input type="number" min="0" max="59" step="1" name="NTPZoneMin" id="NTPZoneMin" value="0"
+                            required="">
+                    </div>
+                    <div>
+                        <label for="NTPDST">Daylight Saving Enabled</label>
+                        <input type="checkbox" name="NTPDST" id="NTPDST">
+                    </div>
+                    <input type="submit" value="Save NTP settings" />
+                </div>
+            </form>
+        </div>
+
+        <div class="region">
+            <h2>Display Settings</h2>
+            <form id="displaySettingForm" method="POST" action="savedisplaysetting.json" autocomplete="off">
+                <div class="settings">
+                    <div>
+                        <label for="VoltageHigh">Graph voltage scale (high)</label>
+                        <select name="VoltageHigh" id="VoltageHigh">
+                            <option>4.50</option>
+                            <option>4.25</option>
+                            <option>4.00</option>
+                            <option>3.75</option>
+                            <option>3.50</option>
+                            <option>3.25</option>
+                            <option>3.00</option>
+                            <option>2.75</option>
+                            <option>2.50</option>
+                            <option>2.25</option>
+                            <option>2.00</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="VoltageLow">Graph voltage scale (low)</label>
+                        <select name="VoltageLow" id="VoltageLow">
+                            <option>4.50</option>
+                            <option>4.25</option>
+                            <option>4.00</option>
+                            <option>3.75</option>
+                            <option>3.50</option>
+                            <option>3.25</option>
+                            <option>3.00</option>
+                            <option>2.75</option>
+                            <option>2.50</option>
+                            <option>2.25</option>
+                            <option>1.75</option>
+                            <option>1.50</option>
+                            <option>1.25</option>
+                            <option>1.00</option>
+                            <option>0.50</option>
+                            <option>0.00</option>
+                        </select>
+                    </div>
+                    <input type="submit" value="Save display settings" />
+                </div>
+            </form>
+        </div>
+
+        <div class="region">
+            <h2>Reset Counters</h2>
+            <form id="resetCountersForm" method="POST" action="resetcounters.json" autocomplete="off">
+                <div class="settings">
+                    <input name="resetCounters" id="resetCounters" type="hidden" value="0">
+                    <input type="submit" value="Reset counters" />
+                </div>
+            </form>
+        </div>
+        <div class="region">
+            <h2>Restart Controller</h2>
+            <form id="restartControllerForm" method="POST" action="restartcontroller.json" autocomplete="off">
+                <div class="settings">
+                    <input name="handleRestartController" id="handleRestartController" type="hidden" value="0">
+                    <input type="submit" value="Restart Controller" />
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="page" id="storagePage">
+        <h1>Storage</h1>
+        <div class="region">
+            <h2>Logging</h2>
+            <p>Cell data and output states can be stored into log files using an SD card.</p>
+            <form id="loggingForm" method="POST" action="savestorage.json" autocomplete="off">
+                <div class="settings">
+                    <div>
+                        <label for="loggingEnabled">SD card logging enabled</label>
+                        <input type="checkbox" name="loggingEnabled" id="loggingEnabled">
+                    </div>
+                    <div>
+                        <label for="loggingFreq">Cell data logging frequency (seconds)</label>
+                        <select name="loggingFreq" id="loggingFreq">
+                            <option>15</option>
+                            <option>30</option>
+                            <option>60</option>
+                            <option>90</option>
+                            <option>120</option>
+                            <option>300</option>
+                        </select>
+                    </div>
+                    <input type="submit" value="Save logging settings" />
+                </div>
+            </form>
+        </div>
+
+        <div class="region">
+            <h2>SD Card</h2>
+            <p id='sdcardmissing' class="warning">SD card not installed</p>
+            Used <span id="sdcard_used"></span>KiB (<span id="sdcard_used_percent"></span>%%) of <span
+                id="sdcard_total"></span>KiB
+            <p>
+                <button type="button" id="unmount">Unmount</button>
+                <button type="button" id="mount">Mount</button>
+            </p>
+            <h2>Flash Memory</h2>
+            Used <span id="flash_used"></span>KiB (<span id="flash_used_percent"></span>%%) of <span
+                id="flash_total"></span>KiB
+
+        </div>
+
+    </div>
+
+    <script type="text/javascript">
+        var g1 = null;
+        var g2 = null;
+        var g3 = null;
+
+        jQuery.cachedScript = function (url, options) {
+            options = $.extend(options || {}, {
+                dataType: "script",
+                cache: true,
+                url: url
+            });
+            return jQuery.ajax(options);
+        };
+
+        $(document).ready(function () {
+            $.cachedScript("echarts.min.js").done(function (script, textStatus) {
+                    $.cachedScript("echarts_gl.min.js").done(function (script, textStatus) {
+                            $.cachedScript("pagecode.js").done(function (script, textStatus) {
+                                //All done
+                            }).fail(function (jqxhr, settings, exception) {
+                                $("#jslibrary").show();
+                            });
+                        })
+                        .fail(function (jqxhr, settings, exception) {
+                            $("#jslibrary").show();
+                        });
+                })
+                .fail(function (jqxhr, settings, exception) {
+                    $("#jslibrary").show();
+                });
+        });
+    </script>
+</body>
+
+</html>

@@ -11,38 +11,21 @@ https://creativecommons.org/licenses/by-nc-sa/2.0/uk/
 * No additional restrictions — You may not apply legal terms or technological measures
   that legally restrict others from doing anything the license permits.  
 */
+
+#include "EmbeddedFiles_Defines.h"
+
 #ifndef DIYBMS_DEFINES_H // include guard
 #define DIYBMS_DEFINES_H
 
 
-// ONLY ENABLE ONE OF THE BELOW....
-//#define DIYBMSMODULEVERSION 420
-//#define DIYBMSMODULEVERSION 410
-//#define DIYBMSMODULEVERSION 420
-//#define DIYBMSMODULEVERSION 421
-
-//#if defined(DIYBMSMODULEVERSION) && DIYBMSMODULEVERSION == 420
-// IF YOU HAVE VERSION 4.20 AND HAVE SWAPPED R19 and R20 OVER 
-// (Thermistor is now in middle of resistor array) THEN ENABLE THIS TO FIX THE TEMPERATURE READINGS
-//#define SWAPR19R20
-//#endif
-
-
 #if (!defined(DIYBMSMODULEVERSION))
-#error You need to enable one of the DIYBMSMODULEVERSION define statements
+#error You need to specify the DIYBMSMODULEVERSION define
 #endif
 
-#if defined(DIYBMSMODULEVERSION) && DIYBMSMODULEVERSION > 430
+#if defined(DIYBMSMODULEVERSION) && DIYBMSMODULEVERSION > 440
 #error Incorrect value for DIYBMSMODULEVERSION
 #endif
 
-#if defined(DIYBMSMODULEVERSION) && DIYBMSMODULEVERSION < 430
-  #define COMMS_BAUD_RATE 2400
-#endif
-
-#if defined(DIYBMSMODULEVERSION) && DIYBMSMODULEVERSION == 430
-  #define COMMS_BAUD_RATE 2400
-#endif
 
 //This is where the data begins in EEPROM
 #define EEPROM_CONFIG_ADDRESS 0
@@ -50,46 +33,40 @@ https://creativecommons.org/licenses/by-nc-sa/2.0/uk/
 #define nop  __asm__("nop\n\t");
 
 
-
+// Only the lowest 4 bits can be used!
 enum COMMAND: uint8_t
 {
-    SetBankIdentity=B00000000,
-    ReadVoltageAndStatus=B00000001,
-    Identify=B00000010,
-    ReadTemperature=B00000011,
-    ReadBadPacketCounter=B00000100,
-    ReadSettings=B00000101,
-    WriteSettings=B00000110,
-    ReadBalancePowerPWM=B00000111
-
-    // 0000 0000  = set bank identity
-    // 0000 0001  = read voltage and status
-    // 0000 0010  = identify module (flash leds)
-    // 0000 0011  = Read temperature
-    // 0000 0100  = Report number of bad packets
-    // 0000 0101  = Report settings/configuration
-    // 0000 0110  = Write settings/configuration
-    // 0000 0111  = Read current level of PWM for power balance
+    ResetBadPacketCounter = 0,
+    ReadVoltageAndStatus=1,
+    Identify=2,
+    ReadTemperature=3,
+    ReadBadPacketCounter=4,
+    ReadSettings=5,
+    WriteSettings=6,
+    ReadBalancePowerPWM=7,
+    Timing=8,
+    ReadBalanceCurrentCounter=9,
+    ReadPacketReceivedCounter=10,
+    ResetBalanceCurrentCounter=11
 };
 
 
 //Default values
 struct CellModuleConfig {
-  uint8_t mybank;
-  uint8_t BypassOverTempShutdown;
+  //uint8_t mybank;
+  uint8_t BypassTemperatureSetPoint;
   uint16_t BypassThresholdmV;
 
   // Resistance of bypass load
-  float LoadResistance;
+  //float LoadResistance;
   //Voltage Calibration
   float Calibration;
   //Reference voltage (millivolt) normally 2.00mV
-  float mVPerADC;
+  //float mVPerADC;
   //Internal Thermistor settings
-  uint16_t Internal_BCoefficient;
+  //uint16_t Internal_BCoefficient;
   //External Thermistor settings
-  uint16_t External_BCoefficient;
+  //uint16_t External_BCoefficient;
 } __attribute__((packed));
-
 
 #endif

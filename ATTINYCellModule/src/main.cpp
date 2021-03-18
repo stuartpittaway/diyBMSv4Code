@@ -7,7 +7,7 @@
 DIYBMS V4.0
 CELL MODULE FOR ATTINY841
 
-(c)2019 Stuart Pittaway
+(c)2019 to 2021 Stuart Pittaway
 
 COMPILE THIS CODE USING PLATFORM.IO
 
@@ -28,88 +28,84 @@ IMPORTANT
 
 You need to configure the correct DIYBMSMODULEVERSION in defines.h file to build for your module
 
+ATTINY chip frequency dropped to 2Mhz to comply with datasheet at low voltages (<2V)
+
+https://trolsoft.ru/en/uart-calc
 */
+
+#define RX_BUFFER_SIZE 64
+
 #include <Arduino.h>
 
-#if !(F_CPU == 8000000)
-#error Processor speed should be 8 Mhz internal
+#if !(F_CPU == 2000000)
+#error Processor speed should be 2Mhz
 #endif
 
-//An Arduino Library that facilitates packet-based serial communication using COBS or SLIP encoding.
-//https://github.com/bakercp/PacketSerial
-#include <PacketSerial.h>
+#if !defined(ATTINY_CORE)
+#error Expected ATTINYCORE
+#endif
 
-#define framingmarker (uint8_t)0x00
-
-//Consistant byte stuffing mode
-//Use ZERO for packet header/terminator
-//64 byte buffer
-PacketSerial_<COBS, framingmarker, 64> myPacketSerial;
+#if !defined(BAUD)
+#error Expected BAUD define
+#endif
 
 //Our project code includes
 #include "defines.h"
 #include "settings.h"
 #include <FastPID.h>
 
+#include <SerialEncoder.h>
 #include "diybms_attiny841.h"
 #include "packet_processor.h"
+
+uint8_t SerialPacketReceiveBuffer[8 + sizeof(PacketStruct)];
+
+SerialEncoder myPacketSerial;
 
 //Default values which get overwritten by EEPROM on power up
 CellModuleConfig myConfig;
 
-DiyBMSATTiny841 hardware;
+//DiyBMSATTiny841 hardware;
 
-PacketProcessor PP(&hardware, &myConfig);
+PacketProcessor PP(&myConfig);
 
 volatile bool wdt_triggered = false;
-uint16_t bypassCountDown = 0;
-uint8_t bypassHasJustFinished = 0;
-bool pwmrunning = false;
+
+//Interrupt counter
+volatile uint8_t InterruptCounter = 0;
+volatile uint16_t PulsePeriod = 0;
+volatile uint16_t OnPulseCount = 0;
+//volatile bool PacketProcessed = false;
 
 void DefaultConfig()
 {
+  //About 2.2007 seems about right
+  myConfig.Calibration = 2.2007;
 
-  // Value of the resistor for load shedding
-
-#if (defined(DIYBMSMODULEVERSION) && DIYBMSMODULEVERSION == 410)
-  myConfig.LoadResistance = 4.00;
-#elif defined(DIYBMSMODULEVERSION) && (DIYBMSMODULEVERSION >= 421)
-  myConfig.LoadResistance = 4.96;
-#else
-  //For v4.00
-  myConfig.LoadResistance = 4.40;
-#endif
-
-  //Default bank zero
-  myConfig.mybank = 0;
-
-  //About 2.2100 seems about right
-  myConfig.Calibration = 2.21000;
-
-  //2mV per ADC resolution
-  myConfig.mVPerADC = 2.0; //2048.0/1024.0;
+//2mV per ADC resolution
+//myConfig.mVPerADC = 2.0; //2048.0/1024.0;
 
 #if defined(DIYBMSMODULEVERSION) && (DIYBMSMODULEVERSION == 420 && !defined(SWAPR19R20))
   //Keep temperature low for modules with R19 and R20 not swapped
-  myConfig.BypassOverTempShutdown = 45;
+  myConfig.BypassTemperatureSetPoint = 45;
 #else
-  //Stop running bypass if temperature over 70 degrees C
-  myConfig.BypassOverTempShutdown = 70;
+  //Stop running bypass if temperature over 65 degrees C
+  myConfig.BypassTemperatureSetPoint = 65;
 #endif
 
   //Start bypass at 4.1V
   myConfig.BypassThresholdmV = 4100;
 
-#if defined(DIYBMSMODULEVERSION) && (DIYBMSMODULEVERSION == 430 || DIYBMSMODULEVERSION == 420 || DIYBMSMODULEVERSION == 421)
+  //#if defined(DIYBMSMODULEVERSION) && (DIYBMSMODULEVERSION == 430 || DIYBMSMODULEVERSION == 420 || DIYBMSMODULEVERSION == 421)
   //Murata Electronics NCP18WB473J03RB = 47K ±5% 4050K ±2% 100mW 0603 NTC Thermistors RoHS
-  myConfig.Internal_BCoefficient = 4050;
-#else
+  //myConfig.Internal_BCoefficient = 4050;
+  //#else
   //4150 = B constant (25-50℃)
-  myConfig.Internal_BCoefficient = 4150;
-#endif
+  //myConfig.Internal_BCoefficient = 4150;
+  //#endif
 
   //4150 = B constant (25-50℃)
-  myConfig.External_BCoefficient = 4150;
+  //myConfig.External_BCoefficient = 4150;
 
   // Resistance @ 25℃ = 47k, B Constant 4150, 0.20mA max current
   //Using https://www.thinksrs.com/downloads/programs/therm%20calc/ntccalibrator/ntccalculator.html
@@ -117,7 +113,7 @@ void DefaultConfig()
 
 ISR(WDT_vect)
 {
-  //This is the watchdog timer - something went wrong and no activity recieved in a while
+  //This is the watchdog timer - something went wrong and no serial activity received in over 8 seconds
   wdt_triggered = true;
   PP.IncrementWatchdogCounter();
 }
@@ -125,46 +121,30 @@ ISR(WDT_vect)
 ISR(ADC_vect)
 {
   // when ADC completed, take an interrupt and process result
-  PP.ADCReading(hardware.ReadADC());
+  PP.ADCReading(DiyBMSATTiny841::ReadADC());
 }
 
-void onPacketReceived(const uint8_t *receivebuffer, size_t len)
+void onPacketReceived()
 {
+  DiyBMSATTiny841::EnableSerial0TX();
 
-  if (len > 0)
+  //A data packet has just arrived, process it and forward the results to the next module
+  if (PP.onPacketReceived((PacketStruct *)SerialPacketReceiveBuffer))
   {
-
-    //A data packet has just arrived, process it and forward the results to the next module
-    if (PP.onPacketReceived(receivebuffer, len))
-    {
-      //Only light green if packet is good
-      hardware.GreenLedOn();
-    }
-
-    hardware.EnableSerial0TX();
-
-    //Wake up the connected cell module from sleep, send a framingmarker
-    //byte which the receiver will ignore
-    Serial.write(framingmarker);
-    //Let connected module wake up
-    hardware.FlushSerial0();
-    //delay(1);
-
-    //Send the packet (even if it was invalid so controller can count crc errors)
-    myPacketSerial.send(PP.GetBufferPointer(), PP.GetBufferSize());
-
-    //DEBUG: Are there any known issues with Serial Flush causing a CPU to hang?
-    hardware.FlushSerial0();
-
-    //Replace flush with a simple delay - we have 35+ bytes to transmit at 2400 baud + COBS encoding
-    //delay(10);
-
-    //At 2400bits per second, = 300 bytes per second = 1000ms/300bytes/sec= 3ms per byte
-
-    hardware.DisableSerial0TX();
+    //Only light Notification if packet is good
+    DiyBMSATTiny841::NotificationLedOn();
   }
 
-  hardware.GreenLedOff();
+  //Send the packet (fixed length!) (even if it was invalid so controller can count crc errors)
+  myPacketSerial.sendBuffer(SerialPacketReceiveBuffer);
+
+  //PLATFORM ATTINYCORE version is 1.3.2 which is old, and SERIAL.FLUSH simply clears the buffer (bad)
+  //Therefore we use 1.4.1 which has the correct code to wait until the buffer is empty.
+  DiyBMSATTiny841::FlushSerial0();
+
+  DiyBMSATTiny841::NotificationLedOff();
+
+  //PacketProcessed = true;
 }
 
 ISR(USART0_START_vect)
@@ -180,7 +160,43 @@ ISR(USART0_START_vect)
 //6Hz rate - number of times we call this code in Loop
 //Kp, Ki, Kd, Hz, output_bits, output_signed);
 //Settings for V4.00 boards with 2R2 resistors = (4.0, 0.5, 0.2, 6, 8, false);
-FastPID myPID(4.0, 0.5, 0.2, 6, 8, false);
+FastPID myPID(5.0, 1.0, 0.1, 3, 8, false);
+
+void ValidateConfiguration()
+{
+  if (myConfig.Calibration < 1.9)
+  {
+    myConfig.Calibration = 2.21000;
+  }
+
+  if (myConfig.BypassTemperatureSetPoint > DIYBMS_MODULE_SafetyTemperatureCutoff)
+  {
+    myConfig.BypassTemperatureSetPoint = 55;
+  }
+
+#if defined(DIYBMSMODULEVERSION) && (DIYBMSMODULEVERSION == 420 && !defined(SWAPR19R20))
+  //Keep temperature low for modules with R19 and R20 not swapped
+  if (myConfig.BypassTemperatureSetPoint > 45)
+  {
+    myConfig.BypassTemperatureSetPoint = 45;
+  }
+#endif
+}
+
+void StopBalance()
+{
+  PP.WeAreInBypass = false;
+  PP.bypassCountDown = 0;
+  PP.bypassHasJustFinished = 0;
+  PP.PWMSetPoint = 0;
+  PP.SettingsHaveChanged = false;
+
+  OnPulseCount = 0;
+  PulsePeriod = 0;
+
+  DiyBMSATTiny841::StopTimer1();
+  DiyBMSATTiny841::DumpLoadOff();
+}
 
 void setup()
 {
@@ -188,177 +204,207 @@ void setup()
   wdt_disable();
   wdt_reset();
 
+  DiyBMSATTiny841::SetPrescaler();
+
+  //below 2Mhz is required for running ATTINY at low voltages (less than 2V)
+
   //8 second between watchdogs
-  hardware.SetWatchdog8sec();
+  DiyBMSATTiny841::SetWatchdog8sec();
 
   //Setup IO ports
-  hardware.ConfigurePorts();
+  DiyBMSATTiny841::ConfigurePorts();
 
   //More power saving changes
-  hardware.EnableSerial0();
+  DiyBMSATTiny841::EnableSerial0();
 
-  hardware.DisableSerial1();
+  DiyBMSATTiny841::DisableSerial1();
 
   //Check if setup routine needs to be run
   if (!Settings::ReadConfigFromEEPROM((uint8_t *)&myConfig, sizeof(myConfig), EEPROM_CONFIG_ADDRESS))
   {
     DefaultConfig();
-    //Save settings
-    Settings::WriteConfigToEEPROM((uint8_t *)&myConfig, sizeof(myConfig), EEPROM_CONFIG_ADDRESS);
+    //No need to save here as the default config will load every time if the CRC is wrong
+    //Settings::WriteConfigToEEPROM((uint8_t *)&myConfig, sizeof(myConfig), EEPROM_CONFIG_ADDRESS);
   }
 
-#if defined(DIYBMSMODULEVERSION) && (DIYBMSMODULEVERSION == 420 && !defined(SWAPR19R20))
-  //Keep temperature low for modules with R19 and R20 not swapped
-  if (myConfig.BypassOverTempShutdown > 45)
-  {
-    myConfig.BypassOverTempShutdown = 45;
-  }
-#endif
+  ValidateConfiguration();
 
-  hardware.double_tap_green_led();
+  DiyBMSATTiny841::double_tap_Notification_led();
 
 #if defined(DIYBMSMODULEVERSION) && DIYBMSMODULEVERSION < 430
-  hardware.double_tap_blue_led();
+  DiyBMSATTiny841::double_tap_blue_led();
 #endif
 
-  //The PID can vary between 0 and 100
-  myPID.setOutputRange(0, 100);
+  //The PID can vary between 0 and 255 (1 byte)
+  myPID.setOutputRange(0, 255);
+
+  StopBalance();
 
   //Set up data handler
-  Serial.begin(COMMS_BAUD_RATE, SERIAL_8N1);
+  Serial.begin(BAUD, SERIAL_8N1);
 
-  myPacketSerial.setStream(&Serial);
-  myPacketSerial.setPacketHandler(&onPacketReceived);
+  myPacketSerial.begin(&Serial, &onPacketReceived, sizeof(PacketStruct), SerialPacketReceiveBuffer, sizeof(SerialPacketReceiveBuffer));
+}
+
+ISR(TIMER1_COMPA_vect)
+{
+  // This ISR is called every 1 millisecond when TIMER1 is enabled
+
+  // when v=1, the duration between on and off is 2.019ms (1.0095ms per interrupt) - on for 2.019ms off for 255.7ms, 0.7844% duty
+  // when v=128 (50%), the duration between on and off is 130.8ms (1.0218ms per interrupt) - on for 130.8ms, off for 127.4ms 50.67% duty
+  // when v=192 (75%), the duration between on and off is 195.6ms (1.0187ms per interrupt) - on for 62.63ms, off for 30.83ms, 75.74% duty
+  InterruptCounter++;
+  PulsePeriod++;
+  //Reset at top
+  if (InterruptCounter == 255)
+  {
+    InterruptCounter = 0;
+  }
+
+  //Switch the load on if the counter is below the SETPOINT
+  if (InterruptCounter <= PP.PWMSetPoint)
+  {
+    //Enable the pin
+    //DiyBMSATTiny841::SparePinOn();
+    DiyBMSATTiny841::DumpLoadOn();
+
+    //Count the number of "on" periods, so we can calculate the amount of energy consumed
+    //over time
+    OnPulseCount++;
+  }
+  else
+  {
+    //Off
+    //DiyBMSATTiny841::SparePinOff();
+    DiyBMSATTiny841::DumpLoadOff();
+  }
+
+  if (PulsePeriod == 1000)
+  {
+
+    // Floats are not good on ATTINY/8bit controllers, need to look at moving to fixed decimal/integer calculations
+
+    //CellVoltage is in millivolts, so we get milli-amp current reading out.
+    //For example 4000mV / 4.4R = 909.0909mA
+    float CurrentmA = ((float)PP.CellVoltage() / (float)LOAD_RESISTANCE);
+
+    //Scale down to the number of "ON" pulses
+    //Assuming 100% on, 909.0909mA * (1000/1000) * 0.0002777 = 0.2525 milli amp hours (or 0.000252 amp hours)
+    float milliAmpHours = (CurrentmA * ((float)OnPulseCount / (float)1000.0)) * (1.0 / 3600.0);
+
+    //0.2525 * 3600 / 1000 = 0.909Ah
+
+    //Keep running total
+    PP.MilliAmpHourBalanceCounter += milliAmpHours;
+
+    OnPulseCount = 0;
+    PulsePeriod = 0;
+  }
+}
+
+inline void identifyModule()
+{
+  if (PP.identifyModule > 0)
+  {
+    DiyBMSATTiny841::NotificationLedOn();
+#if defined(DIYBMSMODULEVERSION) && DIYBMSMODULEVERSION < 430
+    DiyBMSATTiny841::BlueLedOn();
+#endif
+    PP.identifyModule--;
+
+    if (PP.identifyModule == 0)
+    {
+      DiyBMSATTiny841::NotificationLedOff();
+#if defined(DIYBMSMODULEVERSION) && DIYBMSMODULEVERSION < 430
+      DiyBMSATTiny841::BlueLedOff();
+#endif
+    }
+  }
 }
 
 void loop()
 {
   //This loop runs around 3 times per second when the module is in bypass
-
   wdt_reset();
+  identifyModule();
 
-  //if (hztiming) {  hardware.SparePinOn();} else {  hardware.SparePinOff();}hztiming=!hztiming;
-
-  if (PP.identifyModule > 0)
+  if (PP.SettingsHaveChanged)
   {
-    hardware.GreenLedOn();
-    PP.identifyModule--;
-
-    if (PP.identifyModule == 0)
-    {
-      hardware.GreenLedOff();
-    }
+    //The configuration has just been modified so stop balancing if we are and reset our status
+    StopBalance();
   }
 
-  //#ifndef DIYBMS_DEBUG
-  if (!PP.WeAreInBypass && bypassHasJustFinished == 0)
+  if (!PP.WeAreInBypass && PP.bypassHasJustFinished == 0 && Serial.available() == 0)
   {
-    //We don't sleep if we are in bypass mode or just after completing bypass
-    hardware.EnableStartFrameDetection();
+    //Go to SLEEP, we are not in bypass anymore and no serial data waiting...
 
-    //Program stops here until woken by watchdog or pin change interrupt
-    hardware.Sleep();
+    //Reset PID to defaults, in case we want to start balancing
+    myPID.clear();
+
+    //Switch of TX - save power
+    DiyBMSATTiny841::DisableSerial0TX();
+
+    //Wake up on Serial port RX
+    DiyBMSATTiny841::EnableStartFrameDetection();
+
+    //Program stops here until woken by watchdog or Serial port ISR
+    DiyBMSATTiny841::Sleep();
   }
-  //#endif
 
   //We are awake....
 
   if (wdt_triggered)
   {
-#if defined(DIYBMSMODULEVERSION) && DIYBMSMODULEVERSION < 430
+#if defined(DIYBMSMODULEVERSION) && DIYBMSMODULEVERSION < 440
     //Flash blue LED twice after a watchdog wake up
-    hardware.double_tap_blue_led();
+    DiyBMSATTiny841::double_tap_blue_led();
 #else
-    //Flash green LED twice after a watchdog wake up
-    hardware.double_tap_green_led();
+    //Flash Notification LED twice after a watchdog wake up
+    DiyBMSATTiny841::double_tap_Notification_led();
 #endif
+
+    //If we have just woken up, we shouldn't be in balance safety check that we are not
+    StopBalance();
   }
 
   //We always take a voltage and temperature reading on every loop cycle to check if we need to go into bypass
   //this is also triggered by the watchdog should comms fail or the module is running standalone
-  //Probably over kill to do it this frequently
-  hardware.ReferenceVoltageOn();
+  DiyBMSATTiny841::ReferenceVoltageOn();
 
-  //allow reference voltage to stabalize
-  delay(4);
+  //allow reference voltage to stabilize
+  //delay(1);
 
-  PP.TakeAnAnalogueReading(ADC_CELL_VOLTAGE);
   //Internal temperature
   PP.TakeAnAnalogueReading(ADC_INTERNAL_TEMP);
-  //External temperature
-  PP.TakeAnAnalogueReading(ADC_EXTERNAL_TEMP);
 
-  hardware.ReferenceVoltageOff();
+  //Disable the PWM/load during voltage readings
+  //if (PP.bypassCountDown > 0) { DiyBMSATTiny841::PausePWM(); }
 
-  if (PP.BypassCheck())
+  //Only take these readings when we are NOT in bypass....
+  //this causes the voltage and temperature to "freeze" during bypass cycles
+  if (PP.bypassCountDown == 0)
   {
-    //Our cell voltage is OVER the setpoint limit, start draining cell using load bypass resistor
+    //Just for debug purposes, shows when voltage is read
+    //#if defined(DIYBMSMODULEVERSION) && DIYBMSMODULEVERSION < 430
+    //    DiyBMSATTiny841::BlueLedOn();
+    //#endif
 
-    if (!PP.WeAreInBypass)
-    {
-      //We have just entered the bypass code
-      PP.WeAreInBypass = true;
+    //External temperature
+    PP.TakeAnAnalogueReading(ADC_EXTERNAL_TEMP);
 
-      //This controls how many cycles of loop() we make before re-checking the situation
-      //about every 30 seconds
-      bypassCountDown = 200;
-    }
+    //Do voltage reading last to give as much time for voltage to settle
+    PP.TakeAnAnalogueReading(ADC_CELL_VOLTAGE);
+
+    //#if defined(DIYBMSMODULEVERSION) && DIYBMSMODULEVERSION < 430
+    //    DiyBMSATTiny841::BlueLedOff();
+    //#endif
   }
 
-  if (bypassCountDown > 0)
-  {
+  //Switch balance PWM back on if needed
+  //if (PP.bypassCountDown > 0) { DiyBMSATTiny841::ResumePWM(); }
 
-    uint8_t exttemp = PP.InternalTemperature() & 0xFF;
-
-    if (exttemp < (myConfig.BypassOverTempShutdown - 10))
-    {
-      //Full power if we are nowhere near the setpoint (more than 10 degrees C away)
-      hardware.DumpLoadOn();
-      hardware.StopTimer2();
-      PP.PWMValue = 100;
-      pwmrunning = false;
-    }
-    else
-    {
-      if (!pwmrunning)
-      {
-        //We have approached the set point, enable PWM
-        hardware.DumpLoadOff();
-        //Start timer2 with zero value
-        hardware.StartTimer2();
-        pwmrunning = true;
-        //myPID.clear();
-      }
-
-      //Compare the real temperature against max setpoint, we want the PID to keep at this temperature
-      PP.PWMValue = myPID.step(myConfig.BypassOverTempShutdown, exttemp);
-
-      //Scale PWM up to 0-10000
-      hardware.SetTimer2Value(PP.PWMValue * 100);
-    }
-
-    bypassCountDown--;
-
-    if (bypassCountDown == 0)
-    {
-      //Switch everything off for this cycle
-      pwmrunning = false;
-
-      PP.WeAreInBypass = false;
-
-      //myPID.clear();
-      hardware.StopTimer2();
-
-      //switch off
-      hardware.DumpLoadOff();
-
-      //On the next iteration of loop, don't sleep so we are forced to take another
-      //cell voltage reading without the bypass being enabled, and we can then
-      //evaludate if we need to stay in bypass mode, we do this a few times
-      //as the cell has a tendancy to float back up in voltage once load resistor is removed
-      bypassHasJustFinished = 200;
-    }
-  }
+  //Switch reference off if we are not in bypass (otherwise leave on)
+  DiyBMSATTiny841::ReferenceVoltageOff();
 
   if (wdt_triggered)
   {
@@ -369,21 +415,113 @@ void loop()
   {
     //Loop here processing any packets then go back to sleep
 
-    //NOTE this loop size is dependant on the size of the packet buffer (34 bytes)
+    //NOTE this loop size is dependant on the size of the packet buffer (40 bytes)
     //     too small a loop will prevent anything being processed as we go back to Sleep
     //     before packet is received correctly
-    for (size_t i = 0; i < 15; i++)
+    //PacketProcessed = false;
+    for (size_t i = 0; i < 200; i++)
     {
-      //Allow data to be received in buffer
-      delay(10);
-
       // Call update to receive, decode and process incoming packets.
-      myPacketSerial.update();
+      myPacketSerial.checkInputStream();
+
+      //Abort loop if we just processed a packet
+      //if (PacketProcessed) break;
+
+      //Allow data to be received in buffer (delay must be AFTER) checkInputStream and before DisableSerial0TX
+      delay(1);
     }
   }
 
-  if (bypassHasJustFinished > 0)
+  //We should probably check for invalid InternalTemperature ranges here and throw error (shorted or unconnecter thermistor for example)
+  int16_t internal_temperature = PP.InternalTemperature();
+
+  if (internal_temperature > DIYBMS_MODULE_SafetyTemperatureCutoff || internal_temperature > (myConfig.BypassTemperatureSetPoint + 10))
   {
-    bypassHasJustFinished--;
+    //Force shut down if temperature is too high although this does run the risk that the voltage on the cell will go high
+    //but the BMS controller should shut off the charger in this situation
+    myPID.clear();
+    StopBalance();
   }
+
+  //Only enter bypass if the board temperature is below safety
+  if (PP.BypassCheck() && internal_temperature < DIYBMS_MODULE_SafetyTemperatureCutoff)
+  {
+    //Our cell voltage is OVER the voltage setpoint limit, start draining cell using bypass resistor
+
+    if (!PP.WeAreInBypass)
+    {
+      //We have just entered the bypass code
+      PP.WeAreInBypass = true;
+
+      //This controls how many cycles of loop() we make before re-checking the situation
+      //about every 30 seconds
+      PP.bypassCountDown = 50;
+      PP.bypassHasJustFinished = 0;
+
+      //Start PWM
+      DiyBMSATTiny841::StartTimer1();
+      PP.PWMSetPoint = 0;
+    }
+  }
+
+  if (PP.bypassCountDown > 0)
+  {
+    if (internal_temperature < (myConfig.BypassTemperatureSetPoint - 6))
+    {
+      //Full power if we are no where near the setpoint (more than 6 degrees C away)
+      PP.PWMSetPoint = 0xFF;
+    }
+    else
+    {
+      //Compare the real temperature against max setpoint, we want the PID to keep at this temperature
+      PP.PWMSetPoint = myPID.step(myConfig.BypassTemperatureSetPoint, internal_temperature);
+
+      if (myPID.err())
+      {
+        //Clear the error and stop balancing
+        myPID.clear();
+        StopBalance();
+//Just for debug...
+#if defined(DIYBMSMODULEVERSION) && DIYBMSMODULEVERSION < 430
+        DiyBMSATTiny841::BlueLedOn();
+#endif
+      }
+    }
+
+    PP.bypassCountDown--;
+
+    if (PP.bypassCountDown == 0)
+    {
+      //Switch everything off for this cycle
+      StopBalance();
+      //On the next iteration of loop, don't sleep so we are forced to take another
+      //cell voltage reading without the bypass being enabled, and we can then
+      //evaluate if we need to stay in bypass mode, we do this a few times
+      //as the cell has a tendancy to float back up in voltage once load resistor is removed
+      PP.bypassHasJustFinished = 200;
+    }
+  }
+
+  if (PP.bypassHasJustFinished > 0)
+  {
+    PP.bypassHasJustFinished--;
+  }
+
+  /*
+  if (PP.bypassCountDown > 0)
+  {
+    //If we are trying to drain the cell/balance, then we need
+    //to wait around a bit here whilst the balancing works
+    //otherwise the loop() will start again and switch balance off!
+    //wait 500ms before continuing, or we exit when some Serial data arrives
+    uint16_t i = 500 / 5;
+    while (i > 0)
+    {
+      // Call update to receive, decode and process incoming packets (if any)
+      myPacketSerial.checkInputStream();
+      delay(5);
+      i--;
+    }
+  }
+*/
 }
