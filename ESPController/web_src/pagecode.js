@@ -181,6 +181,12 @@ function queryBMS() {
                 //$("#bank" + (bankNumber )).show();
             }
 
+            if (jsondata.bankv.length == 1) {
+                $(".bankName").hide();
+            } else {
+                $(".bankName").show();
+            }
+
             for (var bankNumber = jsondata.bankv.length; bankNumber < MAXIMUM_NUMBER_OF_BANKS; bankNumber++) {
                 //$("#bank" + (bankNumber )).hide();
                 $("#voltage" + bankNumber).hide();
@@ -682,10 +688,17 @@ $(function () {
         $("#totalSeriesModules").append('<option>' + n + '</option>')
     }
     for (var n = MAXIMUM_NUMBER_OF_BANKS - 1; n >= 0; n--) {
+        // Show only the Bank number if there are more than one Bank
+        if (MAXIMUM_NUMBER_OF_BANKS > 1) {
+            bankIdName = '<span class="bankName"> ' + n + '</span>';
+        } else {
+            bankIdName = '';
+        }
+
         $("#totalBanks").prepend('<option>' + (n + 1) + '</option>')
-        $("#info").prepend('<div id="current' + n + '" class="stat"><span class="x t">Current ' + n + ':</span><span class="x v"></span></div>');
-        $("#info").prepend('<div id="range' + n + '" class="stat"><span class="x t">Range ' + n + ':</span><span class="x v"></span></div>');
-        $("#info").prepend('<div id="voltage' + n + '" class="stat"><span class="x t">Voltage ' + n + ':</span><span class="x v"></span></div>');
+        $("#info").prepend('<div id="current' + n + '" class="stat"><span class="x t">Current' + bankIdName + ':</span><span class="x v"></span></div>');
+        $("#info").prepend('<div id="range' + n + '" class="stat"><span class="x t">Range' + bankIdName + ':</span><span class="x v"></span></div>');
+        $("#info").prepend('<div id="voltage' + n + '" class="stat"><span class="x t">Voltage' + bankIdName + ':</span><span class="x v"></span></div>');
 
         $("#voltage" + n).hide();
         $("#range" + n).hide();
