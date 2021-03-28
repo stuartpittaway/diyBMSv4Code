@@ -169,8 +169,10 @@ function queryBMS() {
             for (var bankNumber = 0; bankNumber < jsondata.bankv.length; bankNumber++) {
                 $("#voltage" + bankNumber + " .v").html((parseFloat(jsondata.bankv[bankNumber]) / 1000.0).toFixed(2) + "V");
                 $("#range" + bankNumber + " .v").html(jsondata.voltrange[bankNumber] + "mV");
+                $("#current" + bankNumber + " .v").html((parseFloat(jsondata.current[bankNumber]) / 1000.0).toFixed(2) + "A");
                 $("#voltage" + bankNumber).show();
                 $("#range" + bankNumber).show();
+                $("#current" + bankNumber).show();
                 //$("#bank" + (bankNumber )).show();
             }
 
@@ -178,16 +180,7 @@ function queryBMS() {
                 //$("#bank" + (bankNumber )).hide();
                 $("#voltage" + bankNumber).hide();
                 $("#range" + bankNumber).hide();
-            }
-        }
-
-        //Not currently supported
-        if (jsondata.current) {
-            if (jsondata.current[0] == null) {
-                $("#current").hide();
-            } else {
-                $("#current .v").html((parseFloat(jsondata.current[0]) / 1000.0).toFixed(2));
-                $("#current").show();
+                $("#current" + bankNumber).hide();
             }
         }
 
@@ -685,11 +678,13 @@ $(function () {
     }
     for (var n = MAXIMUM_NUMBER_OF_BANKS - 1; n >= 0; n--) {
         $("#totalBanks").prepend('<option>' + (n + 1) + '</option>')
+        $("#info").prepend('<div id="current' + n + '" class="stat"><span class="x t">Current ' + n + ':</span><span class="x v"></span></div>');
         $("#info").prepend('<div id="range' + n + '" class="stat"><span class="x t">Range ' + n + ':</span><span class="x v"></span></div>');
         $("#info").prepend('<div id="voltage' + n + '" class="stat"><span class="x t">Voltage ' + n + ':</span><span class="x v"></span></div>');
 
         $("#voltage" + n).hide();
         $("#range" + n).hide();
+        $("#current" + n).hide();
     }
 
 

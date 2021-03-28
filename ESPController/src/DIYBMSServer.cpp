@@ -1194,8 +1194,17 @@ void DIYBMSServer::monitor2(AsyncWebServerRequest *request)
   response->print("]");
 
   response->print(comma);
+
+  // Current per Bank (but the Controler can only sense one!)
   response->print(F("\"current\":["));
-  response->print(null);
+  for (uint8_t i = 0; i < _mysettings->totalNumberOfBanks; i++)
+  {
+    //Comma if not zero
+    if (i)
+      response->print(comma);
+
+    response->print(_rules->CurrentInBank(i));
+  }
   response->print("]");
 
   //The END...
