@@ -720,7 +720,6 @@ void setupInfluxClient()
     //See API at https://docs.influxdata.com/influxdb/v1.7/tools/api/#write-http-endpoint
 
     String poststring;
-
     for (uint8_t bank = 0; bank < mysettings.totalNumberOfBanks; bank++)
     {
       //TODO: We should send a request per bank not just a single POST as we are likely to exceed capabilities of ESP
@@ -731,6 +730,11 @@ void setupInfluxClient()
       }
     }
 
+    // currently only current for bank 0
+    #if CURRENTSENSING != sensingNone
+      poststring = poststring = "current c=" + String((float) rules.packCurrent[0] / 1000.0, 3) + "\n";
+    #endif
+    
     //TODO: Need to URLEncode these values
     String url = "/write?db=" + String(mysettings.influxdb_database) + "&u=" + String(mysettings.influxdb_user) + "&p=" + String(mysettings.influxdb_password);
     String header = "POST " + url + " HTTP/1.1\r\n" + "Host: " + String(mysettings.influxdb_host) + "\r\n" + "Connection: close\r\n" + "Content-Length: " + poststring.length() + "\r\n" + "Content-Type: text/plain\r\n" + "\r\n";

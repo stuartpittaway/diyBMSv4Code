@@ -1205,7 +1205,7 @@ void DIYBMSServer::monitor2(AsyncWebServerRequest *request)
     if (i)
       response->print(comma);
 
-    #if CURRENTSENSING == 0
+    #if CURRENTSENSING == sensingNone
       response->print(null);
     #else
       response->print(_rules->CurrentInBank(i));
