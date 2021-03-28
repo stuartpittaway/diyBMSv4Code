@@ -9,4 +9,8 @@
 // How often the sensing is mesaured
 #define sensingIntervalInSeconds    2
 
+// 20000mA / 512 ADC = 39.0625
 #define mAPerADC                (float)(39.0625F)
+
+
+
