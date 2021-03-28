@@ -58,13 +58,8 @@ HAL_ESP8266 hal;
 
 #include "Rules.h"
 
-// Currentsensing Options
-#define sensingNone 0
-#define sensingA0 1
-#define sensingINA228 2
-
-// what Currentsensing method used?
-#define CURRENTSENSING sensingNone
+// load current Sensing Settings
+#include "CurrentSensing.h"
 
 volatile bool emergencyStop = false;
 
@@ -1435,7 +1430,6 @@ void timerCurrentSensingViaA0() {
   // In my case the factor is 39.0625
 
   // Factor: 20000mA / 512 ADC = 39
-  float mAPerADC = 39.0625f;
   
   // can only currentsensing for one bank!
   uint8_t bank = 0;
@@ -1601,9 +1595,9 @@ void setup()
     //This is a lazy timer for low priority tasks
     myLazyTimer.attach(8, timerLazyCallback);
 
-    //This is my 5 second current sensing timer
+    //This is my sensingIntervalInSeconds second current sensing timer
     #if CURRENTSENSING == sensingA0
-      myTimerCurrentSensing.attach(5, timerCurrentSensingViaA0);
+      myTimerCurrentSensing.attach(sensingIntervalInSeconds, timerCurrentSensingViaA0);
     #endif
 
     //We have just started...
