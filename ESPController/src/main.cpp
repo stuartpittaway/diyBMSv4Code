@@ -58,6 +58,14 @@ HAL_ESP8266 hal;
 
 #include "Rules.h"
 
+// Currentsensing Options
+#define sensingNone 0
+#define sensingA0 1
+#define sensingINA228 2
+
+// what Currentsensing method used?
+#define CURRENTSENSING sensingNone
+
 volatile bool emergencyStop = false;
 
 Rules rules;
@@ -1400,8 +1408,9 @@ void TerminalBasedWifiSetup(HardwareSerial stream)
   ESP.restart();
 }
 
+#if CURRENTSENSING == sensingA0
 // Timer to sense the current sensing
-void timerCurrentSensing() {
+void timerCurrentSensingViaA0() {
   int adc = analogRead(A0);
 
   SERIAL_DEBUG.print("ADC:" );
@@ -1436,6 +1445,7 @@ void timerCurrentSensing() {
   SERIAL_DEBUG.print(rules.packCurrent[bank]);
   SERIAL_DEBUG.println(" mA");
 }
+#endif
 
 void setup()
 {
@@ -1592,7 +1602,9 @@ void setup()
     myLazyTimer.attach(8, timerLazyCallback);
 
     //This is my 5 second current sensing timer
-    myTimerCurrentSensing.attach(5, timerCurrentSensing);
+    #if CURRENTSENSING == sensingA0
+      myTimerCurrentSensing.attach(5, timerCurrentSensingViaA0);
+    #endif
 
     //We have just started...
     SetControllerState(ControllerState::Stabilizing);
