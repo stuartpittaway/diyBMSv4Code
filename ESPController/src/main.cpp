@@ -726,6 +726,15 @@ void setupInfluxClient()
       }
     }
 
+ // Relais
+    poststring = poststring + "relais ";
+    for (int8_t n = 0; n < RELAY_TOTAL; n++) {
+      if (n)
+        poststring = poststring + ",";
+      poststring = poststring + "r" + String(n + 1) + "=" + (previousRelayState[n] == RelayState::RELAY_ON ? String("true") : String("false"));
+    }
+    poststring = poststring + "\n";
+
     //TODO: Need to URLEncode these values
     String url = "/write?db=" + String(mysettings.influxdb_database) + "&u=" + String(mysettings.influxdb_user) + "&p=" + String(mysettings.influxdb_password);
     String header = "POST " + url + " HTTP/1.1\r\n" + "Host: " + String(mysettings.influxdb_host) + "\r\n" + "Connection: close\r\n" + "Content-Length: " + poststring.length() + "\r\n" + "Content-Type: text/plain\r\n" + "\r\n";
