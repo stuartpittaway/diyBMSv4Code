@@ -732,7 +732,7 @@ void setupInfluxClient()
 
     // currently only current for bank 0
     #if CURRENTSENSING != sensingNone
-      poststring = poststring = "current c=" + String((float) rules.packCurrent[0] / 1000.0, 3) + "\n";
+      poststring = poststring + "current c=" + String((float) rules.packCurrent[0] / 1000.0, 3) + "\n";
     #endif
     
     //TODO: Need to URLEncode these values
