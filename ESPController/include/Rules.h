@@ -49,8 +49,9 @@ class Rules
 
 public:
     bool rule_outcome[RELAY_RULES];
-    uint32_t packvoltage[maximum_number_of_banks];
 
+    // Voltage per Bank
+    uint32_t packvoltage[maximum_number_of_banks];
     uint16_t lowestvoltageinpack[maximum_number_of_banks];
     uint16_t highestvoltageinpack[maximum_number_of_banks];
 
@@ -60,6 +61,10 @@ public:
     uint32_t lowestPackVoltage;
     uint16_t highestCellVoltage;
     uint16_t lowestCellVoltage;
+
+    // Current per Bank in mA (can positiv and negative)
+    int32_t packCurrent[maximum_number_of_banks];
+
     int8_t highestExternalTemp;
     int8_t lowestExternalTemp;
     int8_t highestInternalTemp;
@@ -86,6 +91,7 @@ public:
 
     void SetError(InternalErrorCode err);
     uint16_t VoltageRangeInBank(uint8_t bank);
+    int32_t CurrentInBank(uint8_t bank);
     void RunRules(
         uint32_t *value,
         uint32_t *hysteresisvalue,

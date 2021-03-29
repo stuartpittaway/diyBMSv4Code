@@ -8,6 +8,7 @@ void Rules::ClearValues()
         packvoltage[r] = 0;
         lowestvoltageinpack[r] = 0xFFFF;
         highestvoltageinpack[r] = 0;
+        packCurrent[r] = 0;
     }
 
     highestPackVoltage = 0;
@@ -90,6 +91,11 @@ void Rules::ProcessCell(uint8_t bank, CellModuleInfo *c)
 uint16_t Rules::VoltageRangeInBank(uint8_t bank)
 {
     return highestvoltageinpack[bank] - lowestvoltageinpack[bank];
+}
+
+int32_t Rules::CurrentInBank(uint8_t bank)
+{
+    return packCurrent[bank];
 }
 
 void Rules::ProcessBank(uint8_t bank)

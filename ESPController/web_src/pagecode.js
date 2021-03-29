@@ -168,26 +168,30 @@ function queryBMS() {
         if (jsondata.bankv) {
             for (var bankNumber = 0; bankNumber < jsondata.bankv.length; bankNumber++) {
                 $("#voltage" + bankNumber + " .v").html((parseFloat(jsondata.bankv[bankNumber]) / 1000.0).toFixed(2) + "V");
-                $("#range" + bankNumber + " .v").html(jsondata.voltrange[bankNumber] + "mV");
                 $("#voltage" + bankNumber).show();
+
+                $("#range" + bankNumber + " .v").html(jsondata.voltrange[bankNumber] + "mV");
                 $("#range" + bankNumber).show();
+
+                // Only show if current is available for this Bank
+                if (jsondata.current[bankNumber] != null) {
+                    $("#current" + bankNumber + " .v").html((parseFloat(jsondata.current[bankNumber]) / 1000.0).toFixed(2) + "A");
+                    $("#current" + bankNumber).show();
+                }
                 //$("#bank" + (bankNumber )).show();
+            }
+
+            if (jsondata.bankv.length == 1) {
+                $(".bankName").hide();
+            } else {
+                $(".bankName").show();
             }
 
             for (var bankNumber = jsondata.bankv.length; bankNumber < MAXIMUM_NUMBER_OF_BANKS; bankNumber++) {
                 //$("#bank" + (bankNumber )).hide();
                 $("#voltage" + bankNumber).hide();
                 $("#range" + bankNumber).hide();
-            }
-        }
-
-        //Not currently supported
-        if (jsondata.current) {
-            if (jsondata.current[0] == null) {
-                $("#current").hide();
-            } else {
-                $("#current .v").html((parseFloat(jsondata.current[0]) / 1000.0).toFixed(2));
-                $("#current").show();
+                $("#current" + bankNumber).hide();
             }
         }
 
@@ -684,12 +688,21 @@ $(function () {
         $("#totalSeriesModules").append('<option>' + n + '</option>')
     }
     for (var n = MAXIMUM_NUMBER_OF_BANKS - 1; n >= 0; n--) {
+        // Show only the Bank number if there are more than one Bank
+        if (MAXIMUM_NUMBER_OF_BANKS > 1) {
+            bankIdName = '<span class="bankName"> ' + n + '</span>';
+        } else {
+            bankIdName = '';
+        }
+
         $("#totalBanks").prepend('<option>' + (n + 1) + '</option>')
-        $("#info").prepend('<div id="range' + n + '" class="stat"><span class="x t">Range ' + n + ':</span><span class="x v"></span></div>');
-        $("#info").prepend('<div id="voltage' + n + '" class="stat"><span class="x t">Voltage ' + n + ':</span><span class="x v"></span></div>');
+        $("#info").prepend('<div id="current' + n + '" class="stat"><span class="x t">Current' + bankIdName + ':</span><span class="x v"></span></div>');
+        $("#info").prepend('<div id="range' + n + '" class="stat"><span class="x t">Range' + bankIdName + ':</span><span class="x v"></span></div>');
+        $("#info").prepend('<div id="voltage' + n + '" class="stat"><span class="x t">Voltage' + bankIdName + ':</span><span class="x v"></span></div>');
 
         $("#voltage" + n).hide();
         $("#range" + n).hide();
+        $("#current" + n).hide();
     }
 
 

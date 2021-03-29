@@ -180,6 +180,9 @@ struct CellModuleInfo
   uint32_t CodeVersionNumber;
   //Value of PWM timer for load shedding
   uint16_t PWMValue;
+  
+  // current mA
+  uint32_t currentMilliAmpere;
 
   uint16_t BalanceCurrentCount;
   uint16_t PacketReceivedCount;

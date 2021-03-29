@@ -22,6 +22,7 @@
    D5 = GPIO14 = Interrupt in from PCF8574
    D7 = GPIO13 = RECEIVE SERIAL
    D8 = GPIO15 = TRANSMIT SERIAL
+   A0 = Current Sensing
 
 */
 
@@ -56,6 +57,9 @@
 HAL_ESP8266 hal;
 
 #include "Rules.h"
+
+// load current Sensing Settings
+#include "CurrentSensing.h"
 
 volatile bool emergencyStop = false;
 
@@ -127,6 +131,7 @@ Ticker myTimerSendMqttPacket;
 Ticker myTimerSendMqttStatus;
 Ticker myTimerSendInfluxdbPacket;
 Ticker myTimerSwitchPulsedRelay;
+Ticker myTimerCurrentSensing;
 
 uint16_t sequence = 0;
 
@@ -715,7 +720,6 @@ void setupInfluxClient()
     //See API at https://docs.influxdata.com/influxdb/v1.7/tools/api/#write-http-endpoint
 
     String poststring;
-
     for (uint8_t bank = 0; bank < mysettings.totalNumberOfBanks; bank++)
     {
       //TODO: We should send a request per bank not just a single POST as we are likely to exceed capabilities of ESP
@@ -726,6 +730,11 @@ void setupInfluxClient()
       }
     }
 
+    // currently only current for bank 0
+    #if CURRENTSENSING != sensingNone
+      poststring = poststring + "current c=" + String((float) rules.packCurrent[0] / 1000.0, 3) + "\n";
+    #endif
+    
     //TODO: Need to URLEncode these values
     String url = "/write?db=" + String(mysettings.influxdb_database) + "&u=" + String(mysettings.influxdb_user) + "&p=" + String(mysettings.influxdb_password);
     String header = "POST " + url + " HTTP/1.1\r\n" + "Host: " + String(mysettings.influxdb_host) + "\r\n" + "Connection: close\r\n" + "Content-Length: " + poststring.length() + "\r\n" + "Content-Type: text/plain\r\n" + "\r\n";
@@ -1397,6 +1406,45 @@ void TerminalBasedWifiSetup(HardwareSerial stream)
   delay(5000);
   ESP.restart();
 }
+
+#if CURRENTSENSING == sensingA0
+// Timer to sense the current sensing
+void timerCurrentSensingViaA0() {
+  int adc = analogRead(A0);
+
+  SERIAL_DEBUG.print("ADC:" );
+  SERIAL_DEBUG.print(adc);
+
+  // Current Sensor Calculation
+  // The ADC is the value readed from A0, a value from 0 to 1024
+  // 0V == 0 ADC
+  // 3.3V == 1024 ADC
+
+  // Current can be negative (unload batteries) or positiv (load batteries)
+  // so 512 ADC means 0A:
+  // 1.65V == 512 ADC == 0 A
+  // 0V == 0 ADC == -20A
+  // 3.3 V == 1024 ADC == 20A
+  //
+  // my HAL sensor is rated for 20A, than means
+  // 0V == -20A, 1.65V == 0A, 3.3V == 20A
+  //
+  // we have to define the ADC to mA Factor, so the ESP can
+  // calculate the current, based on the ADC value.
+  // In my case the factor is 39.0625
+
+  // Factor: 20000mA / 512 ADC = 39
+  
+  // can only currentsensing for one bank!
+  uint8_t bank = 0;
+  rules.packCurrent[bank] = (int) ((adc - 512) * mAPerADC);
+
+  SERIAL_DEBUG.print(" Current " );
+  SERIAL_DEBUG.print(rules.packCurrent[bank]);
+  SERIAL_DEBUG.println(" mA");
+}
+#endif
+
 void setup()
 {
   WiFi.mode(WIFI_OFF);
@@ -1550,6 +1598,11 @@ void setup()
 
     //This is a lazy timer for low priority tasks
     myLazyTimer.attach(8, timerLazyCallback);
+
+    //This is my sensingIntervalInSeconds second current sensing timer
+    #if CURRENTSENSING == sensingA0
+      myTimerCurrentSensing.attach(sensingIntervalInSeconds, timerCurrentSensingViaA0);
+    #endif
 
     //We have just started...
     SetControllerState(ControllerState::Stabilizing);
