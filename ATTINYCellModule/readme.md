@@ -2,14 +2,11 @@
 
 ## LEDs
 ### Green LED
-- is on if a package is received
-- blinks twice if the setup process is nearly complete
-- keeps on for the next 10 Packages, if the CellModule received a identify package
+- blinks if communication is received
+- remains lit for the next 10 communication cycles, if the cell module received a identify request
 
 ### Blue LED
-- blinks twice if the WDT (Watchdog) is triggerd. Can be triggert every 8 seconds
-- blinks twice if the setup process is nearly complete
-- blinks twice if the module wake up
+- blinks twice if the WDT (Watchdog) is triggerd. Triggered every 8 seconds if no communication received.
 
 ### Red LED
 - is on with bypass mode
