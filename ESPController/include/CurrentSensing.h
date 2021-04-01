@@ -12,5 +12,3 @@
 // 20000mA / 512 ADC = 39.0625
 #define mAPerADC                (float)(-39.0625F)
 
-
-
