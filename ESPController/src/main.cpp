@@ -716,13 +716,22 @@ void setupInfluxClient()
 
     String poststring;
 
+    uint8_t index=0;
+
     for (uint8_t bank = 0; bank < mysettings.totalNumberOfBanks; bank++)
     {
       //TODO: We should send a request per bank not just a single POST as we are likely to exceed capabilities of ESP
       for (uint8_t i = 0; i < mysettings.totalNumberOfSeriesModules; i++)
       {
         //Data in LINE PROTOCOL format https://docs.influxdata.com/influxdb/v1.7/write_protocols/line_protocol_tutorial/
-        poststring = poststring + "cells," + "cell=" + String(bank) + "_" + String(i) + " v=" + String((float)cmi[i].voltagemV / 1000.0, 3) + ",i=" + String(cmi[i].internalTemp) + "i" + ",e=" + String(cmi[i].externalTemp) + "i" + ",b=" + (cmi[i].inBypass ? String("true") : String("false")) + "\n";
+        poststring = poststring + "cells," + "cell=" + String(bank) + "_" 
+        + String(i) 
+        + " v=" 
+        + String((float)cmi[index].voltagemV / 1000.0, 3) 
+        + ",i=" + String(cmi[index].internalTemp) 
+        + "i" + ",e=" + String(cmi[index].externalTemp) 
+        + "i" + ",b=" + (cmi[index].inBypass ? String("true") : String("false")) + "\n";
+        index++;
       }
     }
 
