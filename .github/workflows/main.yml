@@ -94,12 +94,12 @@ jobs:
     needs: [job_build_modulecode, job_build_controller_esp8266]
     steps:
     - name: Download artifact DIYBMS-Compiled-Controller-ESP8266
-      uses: actions/download-artifact@v2
+      uses: actions/download-artifact@v4.1.7
       with:
         name: DIYBMS-Compiled-Controller-ESP8266
 
     - name: Download artifact DIYBMS-Compiled-Module
-      uses: actions/download-artifact@v2
+      uses: actions/download-artifact@v4.1.7
       with:
         name: DIYBMS-Compiled-Module
 
